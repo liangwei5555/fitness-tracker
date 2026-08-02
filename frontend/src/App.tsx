@@ -1,4 +1,4 @@
-import { Routes, Route, NavLink, useLocation } from 'react-router-dom'
+import { Routes, Route, NavLink } from 'react-router-dom'
 import TodayWorkout from './pages/TodayWorkout'
 import Photos from './pages/Photos'
 import Stats from './pages/Stats'
@@ -13,9 +13,6 @@ const TABS = [
 ]
 
 export default function App() {
-  const location = useLocation()
-  const currentTab = TABS.find(t => t.exact ? location.pathname === t.to : location.pathname.startsWith(t.to))
-
   return (
     <div className="app-layout">
       {/* Top bar */}

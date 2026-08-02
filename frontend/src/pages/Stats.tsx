@@ -81,7 +81,7 @@ export default function Stats() {
               <YAxis tick={{ fontSize: 12, fill: '#64748b' }} allowDecimals={false} />
               <Tooltip
                 contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13 }}
-                formatter={(v: number) => [`${v} 组`, '完成']} />
+                formatter={(value) => [`${value} 组`, '完成']} />
               <Bar dataKey="sets" fill="var(--primary)" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
