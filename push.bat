@@ -1,6 +1,5 @@
 cd /d C:\Users\33125\Projects\fitness-tracker
-git add railway.json push.bat
-git commit -m "add railway config"
+git add -A
+git commit -m "fix railway config - add root package.json for node detection"
 git push
-echo done
 pause
