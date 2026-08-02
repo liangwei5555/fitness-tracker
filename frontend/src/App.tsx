@@ -18,7 +18,7 @@ export default function App() {
       {/* Top bar */}
       <header className="topbar">
         <span className="brand-icon" style={{ fontSize: '1.3rem' }}>💪</span>
-        <h1 className="page-title" style={{ fontSize: '1rem', margin: 0 }}>小梁健身房</h1>
+        <h1 className="page-title" style={{ fontSize: '1rem', margin: 0 }}>小梁健身</h1>
       </header>
 
       {/* Content */}
