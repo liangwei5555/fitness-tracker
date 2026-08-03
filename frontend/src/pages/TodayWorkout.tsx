@@ -44,11 +44,13 @@ export default function TodayWorkout() {
   const dateOnStart = useRef(date)
   const dateRef = useRef(date); dateRef.current = date
   const ignoring = useRef(false)
+  const modalOpen = showForm || editingEx
 
   const onTS = (e: React.TouchEvent) => {
-    // 忽略弹窗内的触摸
+    // 弹窗打开时彻底忽略所有滑动
+    if (modalOpen) { ignoring.current = true; return }
     const target = e.target as HTMLElement
-    if (target.closest('.modal-overlay') || target.closest('button') || target.closest('input') || target.tagName === 'BUTTON' || target.tagName === 'INPUT') {
+    if (target.closest('button') || target.closest('input') || target.tagName === 'BUTTON' || target.tagName === 'INPUT') {
       ignoring.current = true; return
     }
     ignoring.current = false
@@ -75,17 +77,21 @@ export default function TodayWorkout() {
   const loadHist = () => {
     const to = todayStr(); const from = addDays(to, -60)
     workoutApi.list({ date_from: from, date_to: to, page_size: '500' }).then(r => {
-      const recs = r.data || [] as WorkoutRecord[]
-      const seen = new Set<string>(); const cfgs: ExCfg[] = []
-      for (const rec of recs) {
-        const k = `${rec.exercise_name}|${rec.target_sets || rec.sets}|${rec.reps}|${rec.weight_kg ?? 0}`
-        if (!seen.has(k) && rec.exercise_name) { seen.add(k); cfgs.push({ name: rec.exercise_name, sets: rec.target_sets || rec.sets || 0, reps: rec.reps || 0, wt: rec.weight_kg }) }
-      }
-      setRecentCfg(cfgs.slice(0, 20))
-      const dates = [...new Set(recs.map(r2 => r2.date))].sort().reverse()
-      const ld = dates.find(d2 => d2 !== to) || null
-      if (ld) { setLastDate(ld); setLastRecs(recs.filter(r2 => r2.date === ld)) }
-    }).catch(() => {})
+      try {
+        const recs = Array.isArray(r?.data) ? r.data : []
+        if (recs.length === 0) { console.log('loadHist: no records'); return }
+        const seen = new Set<string>(); const cfgs: ExCfg[] = []
+        for (const rec of recs) {
+          if (!rec?.exercise_name) continue
+          const k = `${rec.exercise_name}|${rec.target_sets || rec.sets || 0}|${rec.reps || 0}|${rec.weight_kg ?? 0}`
+          if (!seen.has(k)) { seen.add(k); cfgs.push({ name: rec.exercise_name, sets: rec.target_sets || rec.sets || 0, reps: rec.reps || 0, wt: rec.weight_kg }) }
+        }
+        setRecentCfg(cfgs.slice(0, 20))
+        const dates = [...new Set(recs.map((r2: WorkoutRecord) => r2.date).filter(Boolean))].sort().reverse()
+        const ld = dates.find(d2 => d2 !== to) || null
+        if (ld) { setLastDate(ld); setLastRecs(recs.filter((r2: WorkoutRecord) => r2.date === ld)) }
+      } catch (e) { console.error('loadHist error:', e) }
+    }).catch((e) => { console.error('loadHist fetch error:', e) })
   }
   useEffect(() => { load() }, [date])
   useEffect(() => { loadHist() }, [])
@@ -128,7 +134,7 @@ export default function TodayWorkout() {
   const chWeek = (n: number) => setWeekBase(addDays(weekBase, n * 7))
 
   return (
-    <div style={{ paddingBottom: 20, minHeight: 'calc(100vh - 110px)' }}
+    <div style={{ paddingBottom: 20, minHeight: '100dvh', touchAction: 'pan-y' }}
       onTouchStart={onTS} onTouchEnd={onTE}>
       {/* ═══ 周视图 ═══ */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginBottom: 2 }}>
@@ -147,7 +153,7 @@ export default function TodayWorkout() {
 
       <div style={{ textAlign: 'center', padding: '8px 0 4px', fontSize: '.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
         {fmtDate(date)}
-        {date === today && <span style={{ marginLeft: 6, padding: '1px 8px', borderRadius: 10, background: 'var(--primary)', color: '#fff', fontSize: '.7rem', fontWeight: 500 }}>今天</span>}
+        {date === today && <span style={{ marginLeft: 6, padding: '2px 10px', borderRadius: 10, background: 'var(--primary)', color: '#fff', fontSize: '.75rem', fontWeight: 600, letterSpacing: '.5px' }}>今天</span>}
       </div>
 
       {/* ═══ 内容 ═══ */}
@@ -166,6 +172,9 @@ export default function TodayWorkout() {
           ) : records.map(r => <ExerciseCard key={r.id} record={r} onUpdate={handleUpdate} onDelete={handleDelete} />)}
       </div>
 
+      {/* 触底占位：保证空白区域可触摸滑动 */}
+      <div style={{ height: 80, minHeight: 'calc(100dvh - 380px)' }} />
+
       {/* 照片 */}
       {!loading && (
         <div style={{ marginTop: 20 }}>
@@ -183,13 +192,13 @@ export default function TodayWorkout() {
       )}
 
       {/* 照片大图 */}
-      {viewing && <div className="modal-overlay" onClick={() => setViewing(null)}><div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400, padding: 16 }}><img src={`/${viewing.file_path}`} alt="" style={{ width: '100%', borderRadius: 8, maxHeight: '60vh', objectFit: 'contain' }} /><div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, fontSize: '.8rem', color: 'var(--text-secondary)' }}><span>{viewing.date} · {viewing.view_type}</span><button className="btn btn-danger btn-sm" onClick={() => delPhoto(viewing.id)}>删除</button></div></div></div>}
+      {viewing && <div className="modal-overlay" onClick={() => setViewing(null)} onTouchStart={e => e.stopPropagation()} onTouchEnd={e => e.stopPropagation()}><div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400, padding: 16 }}><img src={`/${viewing.file_path}`} alt="" style={{ width: '100%', borderRadius: 8, maxHeight: '60vh', objectFit: 'contain' }} /><div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, fontSize: '.8rem', color: 'var(--text-secondary)' }}><span>{viewing.date} · {viewing.view_type}</span><button className="btn btn-danger btn-sm" onClick={() => delPhoto(viewing.id)}>删除</button></div></div></div>}
 
       {/* ＋ */}
       <button onClick={() => { setForm({ name: '', sets: '', reps: '', wt: '', pd: date }); setShowForm(true) }} style={{ position: 'fixed', bottom: 80, right: 20, width: 52, height: 52, borderRadius: '50%', background: 'var(--primary)', color: '#fff', border: 'none', fontSize: '1.6rem', cursor: 'pointer', boxShadow: '0 4px 16px rgba(79,70,229,0.4)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>＋</button>
 
       {/* 添加弹窗 */}
-      {showForm && <div className="modal-overlay" onClick={() => setShowForm(false)}><form className="modal" onClick={e => e.stopPropagation()} onSubmit={submit} style={{ maxWidth: 360, padding: 20 }}><h2 style={{ fontSize: '1.05rem', marginBottom: 14 }}>添加训练动作</h2>
+      {showForm && <div className="modal-overlay" onClick={() => setShowForm(false)} onTouchStart={e => e.stopPropagation()} onTouchEnd={e => e.stopPropagation()}><form className="modal" onClick={e => e.stopPropagation()} onSubmit={submit} style={{ maxWidth: 360, padding: 20 }}><h2 style={{ fontSize: '1.05rem', marginBottom: 14 }}>添加训练动作</h2>
         <div className="form-group"><label>动作名称</label><input className="form-input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="如：卧推、深蹲" autoFocus /></div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 4, alignItems: 'center' }}>
           {myEx.map(ex => <button key={ex} type="button" onClick={() => setForm({ ...form, name: ex })} style={{ padding: '4px 10px', borderRadius: 16, border: '1px solid #e2e8f0', background: form.name === ex ? 'var(--primary)' : '#fff', color: form.name === ex ? '#fff' : '#64748b', fontSize: '.75rem', cursor: 'pointer' }}>{ex}</button>)}
@@ -209,7 +218,7 @@ export default function TodayWorkout() {
       </form></div>}
 
       {/* 编辑动作弹窗 */}
-      {editingEx && <div className="modal-overlay" onClick={() => setEditingEx(false)}><div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 360, padding: 20 }}><h2 style={{ fontSize: '1.05rem', marginBottom: 14 }}>编辑常用动作</h2>
+      {editingEx && <div className="modal-overlay" onClick={() => setEditingEx(false)} onTouchStart={e => e.stopPropagation()} onTouchEnd={e => e.stopPropagation()}><div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 360, padding: 20 }}><h2 style={{ fontSize: '1.05rem', marginBottom: 14 }}>编辑常用动作</h2>
         <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}><input className="form-input" value={newEx} onChange={e => setNewEx(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEx() } }} placeholder="新动作名称" style={{ flex: 1 }} /><button type="button" className="btn btn-primary btn-sm" onClick={addEx}>添加</button></div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>{myEx.map(ex => <span key={ex} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px 4px 12px', borderRadius: 16, background: '#f1f5f9', fontSize: '.8rem' }}>{ex}<button type="button" onClick={() => rmEx(ex)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '1rem', padding: '0 2px', lineHeight: 1 }}>×</button></span>)}</div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}><button type="button" className="btn btn-sm btn-secondary" onClick={() => { setMyEx([...DEF_EX]); saveMyEx([...DEF_EX]) }} style={{ fontSize: '.72rem' }}>恢复默认</button><button type="button" className="btn btn-primary btn-sm" onClick={() => setEditingEx(false)}>完成</button></div>

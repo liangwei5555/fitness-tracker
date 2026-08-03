@@ -38,7 +38,8 @@ export default function ExerciseCard({ record, onUpdate, onDelete }: Props) {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <button
-              onPointerDown={e => { e.preventDefault(); minus() }}
+              onTouchStart={e => { e.preventDefault(); minus() }}
+              onMouseDown={e => { e.preventDefault(); minus() }}
               disabled={completed <= 0}
               style={btnStyle(completed <= 0)}>−</button>
             <div style={{ flex: 1, textAlign: 'center' }}>
@@ -46,7 +47,8 @@ export default function ExerciseCard({ record, onUpdate, onDelete }: Props) {
               <span style={{ fontSize: '.85rem', color: 'var(--text-secondary)' }}> / {target} 组</span>
             </div>
             <button
-              onPointerDown={e => { e.preventDefault(); plus() }}
+              onTouchStart={e => { e.preventDefault(); plus() }}
+              onMouseDown={e => { e.preventDefault(); plus() }}
               disabled={completed >= target}
               style={btnStyle(completed >= target)}>＋</button>
           </div>

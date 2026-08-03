@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Component } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip, Cell } from 'recharts'
 import { workoutApi, type WorkoutRecord } from '../api'
 
@@ -8,6 +8,16 @@ function weekMonday(s: string) { const [y, m, d] = s.split('-').map(Number); con
 function monthStart(s: string) { return s.slice(0, 7) + '-01' }
 
 const COLORS = ['#4f46e5', '#22c55e', '#eab308', '#ef4444', '#3b82f6', '#a855f7', '#ec4899', '#14b8a6', '#f97316', '#6366f1']
+
+// 错误边界：防止 Recharts 崩溃导致整个页面白屏
+class ChartErrorBoundary extends Component<{ fallback: React.ReactNode; children: React.ReactNode }> {
+  state = { hasError: false }
+  static getDerivedStateFromError() { return { hasError: true } }
+  render() {
+    if (this.state.hasError) return this.props.fallback
+    return this.props.children
+  }
+}
 
 export default function Stats() {
   const [records, setRecords] = useState<WorkoutRecord[]>([])
@@ -19,7 +29,7 @@ export default function Stats() {
     const to = todayStr()
     const from = addDays(to, -60)
     workoutApi.list({ date_from: from, date_to: to, page_size: '500' })
-      .then(r => { setRecords(r.data || []) })
+      .then(r => { setRecords(Array.isArray(r?.data) ? r.data : []) })
       .catch(() => setError(true))
       .finally(() => setLoading(false))
   }, [])
@@ -32,11 +42,12 @@ export default function Stats() {
 
   const periodRecords = records.filter(r => r.date >= weekStart)
 
-  // 按动作累计
+  // 按动作累计（防御：跳过异常数据）
   const byExercise: Record<string, number> = {}
   let totalSets = 0
   const daysSet = new Set<string>()
   periodRecords.forEach(r => {
+    if (!r?.exercise_name) return
     const sets = r.completed_sets || r.sets || 0
     byExercise[r.exercise_name] = (byExercise[r.exercise_name] || 0) + sets
     totalSets += sets
@@ -64,6 +75,8 @@ export default function Stats() {
   const prevStart = view === 'week' ? addDays(weekStart, -7) : (() => { const [y, m] = weekStart.split('-').map(Number); const pm = m - 1 === 0 ? 12 : m - 1; const py = m - 1 === 0 ? y - 1 : y; return `${py}-${String(pm).padStart(2, '0')}-01` })()
   const prevSets = records.filter(r => r.date >= prevStart && r.date < weekStart).reduce((s, r) => s + (r.completed_sets || r.sets || 0), 0)
 
+  const chartFallback = <div style={{ textAlign: 'center', padding: 20, color: 'var(--text-secondary)', fontSize: '.85rem' }}>图表加载失败</div>
+
   return (
     <div style={{ paddingBottom: 20 }}>
       <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
@@ -88,31 +101,39 @@ export default function Stats() {
           {/* 动作分布 */}
           <div className="card" style={{ marginBottom: 12 }}>
             <h2 style={{ fontSize: '.9rem', marginBottom: 10 }}>🏋️ 动作分布</h2>
-            <ResponsiveContainer width="100%" height={Math.max(180, exerciseData.length * 34)}>
-              <BarChart data={exerciseData} layout="vertical" margin={{ top: 0, right: 20, left: 10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
-                <YAxis type="category" dataKey="name" tick={{ fontSize: 12, fill: '#64748b' }} width={70} />
-                <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }} formatter={(v) => [`${v} 组`, '完成']} />
-                <Bar dataKey="sets" radius={[0, 4, 4, 0]}>
-                  {exerciseData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            <ChartErrorBoundary fallback={chartFallback}>
+              <div style={{ width: '100%', height: Math.max(200, exerciseData.length * 34) }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={exerciseData} layout="vertical" margin={{ top: 0, right: 20, left: 10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
+                    <XAxis type="number" tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 12, fill: '#64748b' }} width={70} />
+                    <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }} formatter={(v) => [`${v} 组`, '完成']} />
+                    <Bar dataKey="sets" radius={[0, 4, 4, 0]}>
+                      {exerciseData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </ChartErrorBoundary>
           </div>
 
           {/* 每日趋势 */}
           <div className="card">
             <h2 style={{ fontSize: '.9rem', marginBottom: 10 }}>📈 每日趋势</h2>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={dailyData} margin={{ top: 4, right: 4, left: -20, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#64748b' }} interval={view === 'month' ? 2 : 0} />
-                <YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
-                <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }} formatter={(v) => [`${v} 组`, '完成']} />
-                <Bar dataKey="sets" fill="var(--primary)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <ChartErrorBoundary fallback={chartFallback}>
+              <div style={{ width: '100%', height: 200 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={dailyData} margin={{ top: 4, right: 4, left: -20, bottom: 4 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#64748b' }} interval={view === 'month' ? 2 : 0} />
+                    <YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
+                    <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }} formatter={(v) => [`${v} 组`, '完成']} />
+                    <Bar dataKey="sets" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </ChartErrorBoundary>
           </div>
         </>
       )}
