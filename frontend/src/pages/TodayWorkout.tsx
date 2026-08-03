@@ -71,6 +71,67 @@ export default function TodayWorkout() {
   const [editingExercises, setEditingExercises] = useState(false)
   const [newExercise, setNewExercise] = useState('')
 
+  // ─── 历史训练配置 ───
+  interface ExerciseConfig { name: string; sets: number; reps: number; weight: number | null }
+  const [recentConfigs, setRecentConfigs] = useState<ExerciseConfig[]>([])
+  const [lastWorkoutDate, setLastWorkoutDate] = useState<string | null>(null)
+  const [lastWorkoutRecords, setLastWorkoutRecords] = useState<WorkoutRecord[]>([])
+  const [copying, setCopying] = useState(false)
+
+  const loadHistory = () => {
+    const to = todayStr()
+    const from = addDays(to, -60)
+    workoutApi.list({ date_from: from, date_to: to, page_size: '500' })
+      .then(r => {
+        const records = r.data || []
+        // 提取唯一配置
+        const seen = new Set<string>()
+        const configs: ExerciseConfig[] = []
+        for (const rec of records) {
+          const key = `${rec.exercise_name}|${rec.target_sets || rec.sets}|${rec.reps}|${rec.weight_kg ?? 0}`
+          if (!seen.has(key) && rec.exercise_name) {
+            seen.add(key)
+            configs.push({
+              name: rec.exercise_name,
+              sets: rec.target_sets || rec.sets || 0,
+              reps: rec.reps || 0,
+              weight: rec.weight_kg,
+            })
+          }
+        }
+        setRecentConfigs(configs.slice(0, 20))
+
+        // 找最近有训练的一天（不含今天）
+        const dates = [...new Set(records.map(r => r.date))].sort().reverse()
+        const lastDate = dates.find(d => d !== to) || null
+        if (lastDate) {
+          setLastWorkoutDate(lastDate)
+          setLastWorkoutRecords(records.filter(r => r.date === lastDate))
+        }
+      })
+      .catch(() => {})
+  }
+  useEffect(() => { loadHistory() }, [])
+
+  // ─── 一键复制最近一天的计划 ───
+  const copyLastWorkout = async () => {
+    if (lastWorkoutRecords.length === 0) return
+    setCopying(true)
+    try {
+      for (const rec of lastWorkoutRecords) {
+        await workoutApi.create({
+          date,
+          exercise_name: rec.exercise_name,
+          target_sets: rec.target_sets || rec.sets || 0,
+          reps: rec.reps || 0,
+          weight_kg: rec.weight_kg,
+        })
+      }
+      load()
+    } catch { /* ignore */ }
+    finally { setCopying(false) }
+  }
+
   // ─── 滑动手势（用 ref 避免重渲染干扰） ───
   const swipeStartX = useRef(0)
   const swipeStartY = useRef(0)
@@ -127,6 +188,7 @@ export default function TodayWorkout() {
       })
       setShowForm(false)
       load()
+      loadHistory()
     } catch { /* ignore */ }
   }
 
@@ -212,7 +274,13 @@ export default function TodayWorkout() {
           <div className="empty-state" style={{ padding: 32 }}>
             <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>💪</div>
             <p style={{ color: 'var(--text-secondary)' }}>这天还没安排训练</p>
-            <p style={{ fontSize: '.8rem', color: '#94a3b8' }}>点击 ＋ 添加动作</p>
+            <p style={{ fontSize: '.8rem', color: '#94a3b8', marginBottom: 16 }}>点击 ＋ 添加动作</p>
+            {lastWorkoutDate && lastWorkoutRecords.length > 0 && (
+              <button className="btn btn-secondary btn-sm" onClick={copyLastWorkout} disabled={copying}
+                style={{ fontSize: '.8rem' }}>
+                {copying ? '复制中...' : `📋 复用 ${lastWorkoutDate} 的训练计划`}
+              </button>
+            )}
           </div>
         ) : (
           records.map(r => (
@@ -299,7 +367,40 @@ export default function TodayWorkout() {
               <button type="button" onClick={() => setEditingExercises(true)}
                 style={{ padding: '4px 8px', borderRadius: 16, border: '1px dashed #cbd5e1', background: '#fff', color: '#94a3b8', fontSize: '.75rem', cursor: 'pointer' }}>✎ 编辑</button>
             </div>
-            <div className="form-group" style={{ marginTop: 12 }}>
+
+            {/* ─── 历史配置 ─── */}
+            {recentConfigs.length > 0 && (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: '.75rem', color: '#94a3b8', marginBottom: 6 }}>📋 历史记录（点一下直接填入）</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {recentConfigs.map((c, i) => (
+                    <button key={i} type="button" onClick={() => setForm({
+                      ...form,
+                      exercise_name: c.name,
+                      target_sets: String(c.sets || ''),
+                      reps: String(c.reps || ''),
+                      weight_kg: c.weight ? String(c.weight) : '',
+                    })}
+                      style={{
+                        padding: '5px 10px', borderRadius: 8, border: '1px solid #e2e8f0',
+                        background: form.exercise_name === c.name &&
+                          form.target_sets === String(c.sets || '') &&
+                          form.weight_kg === (c.weight ? String(c.weight) : '')
+                          ? '#eef2ff' : '#f8fafc',
+                        fontSize: '.76rem', cursor: 'pointer', textAlign: 'left',
+                        lineHeight: 1.4,
+                      }}>
+                      <div style={{ fontWeight: 500 }}>{c.name}</div>
+                      <div style={{ color: '#94a3b8', fontSize: '.7rem' }}>
+                        {c.sets > 0 ? `${c.sets}组` : ''}{c.reps > 0 ? ` ×${c.reps}次` : ''}{c.weight ? ` ${c.weight}kg` : ''}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="form-group" style={{ marginTop: 8 }}>
               <label>训练日期</label>
               <input className="form-input" type="date" value={form.plan_date}
                 onChange={e => setForm({ ...form, plan_date: e.target.value })} />
