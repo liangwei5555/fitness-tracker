@@ -76,10 +76,11 @@ export default function TodayWorkout() {
   }
   const loadHist = () => {
     const to = todayStr(); const from = addDays(to, -60)
-    workoutApi.list({ date_from: from, date_to: to, page_size: '500' }).then(r => {
+    workoutApi.list({ date_from: from, date_to: to, page_size: '200' }).then(r => {
       try {
         const recs = Array.isArray(r?.data) ? r.data : []
-        if (recs.length === 0) { console.log('loadHist: no records'); return }
+        if (recs.length === 0) { console.log('loadHist: 暂无历史记录'); return }
+        console.log('loadHist: 获取到', recs.length, '条历史记录')
         const seen = new Set<string>(); const cfgs: ExCfg[] = []
         for (const rec of recs) {
           if (!rec?.exercise_name) continue

@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useCallback } from 'react'
 import { workoutApi, type WorkoutRecord } from '../api'
 
 interface Props { record: WorkoutRecord; onUpdate: (r: WorkoutRecord) => void; onDelete: (id: number) => void }
@@ -9,17 +9,32 @@ export default function ExerciseCard({ record, onUpdate, onDelete }: Props) {
   const isDone = target > 0 && completed >= target
   const pct = target > 0 ? Math.round((completed / target) * 100) : 0
   const busy = useRef(false)
+  // 保存 record 引用，用于失败时回滚
+  const recordRef = useRef(record); recordRef.current = record
 
-  const plus = async () => {
+  const plus = useCallback(() => {
     if (busy.current || completed >= target) return
     busy.current = true
-    try { const r = await workoutApi.completeSet(record.id); onUpdate(r) } catch {} finally { busy.current = false }
-  }
-  const minus = async () => {
+    // 乐观更新：立即 +1
+    const optimistic = { ...recordRef.current, completed_sets: completed + 1 }
+    onUpdate(optimistic)
+    workoutApi.completeSet(recordRef.current.id)
+      .then(r => { onUpdate(r) })
+      .catch(() => { onUpdate(recordRef.current) })  // 失败回滚
+      .finally(() => { busy.current = false })
+  }, [completed, target, onUpdate])
+
+  const minus = useCallback(() => {
     if (busy.current || completed <= 0) return
     busy.current = true
-    try { const r = await workoutApi.undoSet(record.id); onUpdate(r) } catch {} finally { busy.current = false }
-  }
+    // 乐观更新：立即 -1
+    const optimistic = { ...recordRef.current, completed_sets: completed - 1 }
+    onUpdate(optimistic)
+    workoutApi.undoSet(recordRef.current.id)
+      .then(r => { onUpdate(r) })
+      .catch(() => { onUpdate(recordRef.current) })  // 失败回滚
+      .finally(() => { busy.current = false })
+  }, [completed, onUpdate])
 
   return (
     <div style={{ background: isDone ? '#f0fdf4' : '#fff', border: `1px solid ${isDone ? '#bbf7d0' : 'var(--border)'}`, borderRadius: 12, padding: '12px 14px', marginBottom: 8, opacity: isDone ? 0.75 : 1 }}>

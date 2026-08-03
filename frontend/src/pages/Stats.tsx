@@ -28,7 +28,7 @@ export default function Stats() {
   useEffect(() => {
     const to = todayStr()
     const from = addDays(to, -60)
-    workoutApi.list({ date_from: from, date_to: to, page_size: '500' })
+    workoutApi.list({ date_from: from, date_to: to, page_size: '200' })
       .then(r => { setRecords(Array.isArray(r?.data) ? r.data : []) })
       .catch(() => setError(true))
       .finally(() => setLoading(false))
