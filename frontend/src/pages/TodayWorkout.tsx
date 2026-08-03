@@ -35,6 +35,7 @@ export default function TodayWorkout() {
   const [lastDate, setLastDate] = useState<string | null>(null)
   const [lastRecs, setLastRecs] = useState<WorkoutRecord[]>([])
   const [copying, setCopying] = useState(false)
+  const submitting = useRef(false)
 
   const [weekBase, setWeekBase] = useState(weekMon(today))
 
@@ -75,8 +76,9 @@ export default function TodayWorkout() {
       .then(r => setPhotos(r.data || [])).catch(() => {})
   }
   const loadHist = () => {
-    const to = todayStr(); const from = addDays(to, -60)
-    workoutApi.list({ date_from: from, date_to: to, page_size: '200' }).then(r => {
+    const from = addDays(todayStr(), -90)
+    // 不限制 date_to，确保未来日期的记录也能出现在历史中
+    workoutApi.list({ date_from: from, page_size: '200' }).then(r => {
       try {
         const recs = Array.isArray(r?.data) ? r.data : []
         if (recs.length === 0) { console.log('loadHist: 暂无历史记录'); return }
@@ -89,7 +91,7 @@ export default function TodayWorkout() {
         }
         setRecentCfg(cfgs.slice(0, 20))
         const dates = [...new Set(recs.map((r2: WorkoutRecord) => r2.date).filter(Boolean))].sort().reverse()
-        const ld = dates.find(d2 => d2 !== to) || null
+        const ld = dates.length > 0 ? dates[0] : null
         if (ld) { setLastDate(ld); setLastRecs(recs.filter((r2: WorkoutRecord) => r2.date === ld)) }
       } catch (e) { console.error('loadHist error:', e) }
     }).catch((e) => { console.error('loadHist fetch error:', e) })
@@ -99,14 +101,14 @@ export default function TodayWorkout() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.name.trim()) return
+    if (!form.name.trim() || submitting.current) return
+    submitting.current = true
     try {
       await workoutApi.create({ date: form.pd, exercise_name: form.name.trim(), target_sets: Number(form.sets) || 0, reps: Number(form.reps) || 0, weight_kg: form.wt ? Number(form.wt) : null })
       setShowForm(false)
-      // 如果添加的日期不是当前查看的日期，切换到那天
       if (form.pd !== date) setDate(form.pd)
       load(); loadHist()
-    } catch {}
+    } catch {} finally { submitting.current = false }
   }
 
   const handleUpdate = (r: WorkoutRecord) => setRecords(prev => prev.map(p => p.id === r.id ? r : p))

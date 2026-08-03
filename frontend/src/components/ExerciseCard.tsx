@@ -8,33 +8,39 @@ export default function ExerciseCard({ record, onUpdate, onDelete }: Props) {
   const completed = record.completed_sets || 0
   const isDone = target > 0 && completed >= target
   const pct = target > 0 ? Math.round((completed / target) * 100) : 0
-  const busy = useRef(false)
-  // 保存 record 引用，用于失败时回滚
   const recordRef = useRef(record); recordRef.current = record
+  // 序列号：只应用最新一次 API 调用的结果，防止快速连点时 UI 闪烁
+  const seqRef = useRef(0)
 
   const plus = useCallback(() => {
-    if (busy.current || completed >= target) return
-    busy.current = true
-    // 乐观更新：立即 +1
-    const optimistic = { ...recordRef.current, completed_sets: completed + 1 }
-    onUpdate(optimistic)
+    if (completed >= target) return
+    const next = completed + 1
+    onUpdate({ ...recordRef.current, completed_sets: next })
+    const seq = ++seqRef.current
     workoutApi.completeSet(recordRef.current.id)
-      .then(r => { onUpdate(r) })
-      .catch(() => { onUpdate(recordRef.current) })  // 失败回滚
-      .finally(() => { busy.current = false })
+      .then(r => { if (seq === seqRef.current) onUpdate(r) })
+      .catch(() => { if (seq === seqRef.current) onUpdate(recordRef.current) })
   }, [completed, target, onUpdate])
 
   const minus = useCallback(() => {
-    if (busy.current || completed <= 0) return
-    busy.current = true
-    // 乐观更新：立即 -1
-    const optimistic = { ...recordRef.current, completed_sets: completed - 1 }
-    onUpdate(optimistic)
+    if (completed <= 0) return
+    const next = completed - 1
+    onUpdate({ ...recordRef.current, completed_sets: next })
+    const seq = ++seqRef.current
     workoutApi.undoSet(recordRef.current.id)
-      .then(r => { onUpdate(r) })
-      .catch(() => { onUpdate(recordRef.current) })  // 失败回滚
-      .finally(() => { busy.current = false })
+      .then(r => { if (seq === seqRef.current) onUpdate(r) })
+      .catch(() => { if (seq === seqRef.current) onUpdate(recordRef.current) })
   }, [completed, onUpdate])
+
+  // 一键完成：直接设为目标组数
+  const completeAll = useCallback(() => {
+    if (isDone) return
+    onUpdate({ ...recordRef.current, completed_sets: target })
+    const seq = ++seqRef.current
+    workoutApi.update(recordRef.current.id, { completed_sets: target })
+      .then(r => { if (seq === seqRef.current) onUpdate(r) })
+      .catch(() => { if (seq === seqRef.current) onUpdate(recordRef.current) })
+  }, [target, isDone, onUpdate])
 
   return (
     <div style={{ background: isDone ? '#f0fdf4' : '#fff', border: `1px solid ${isDone ? '#bbf7d0' : 'var(--border)'}`, borderRadius: 12, padding: '12px 14px', marginBottom: 8, opacity: isDone ? 0.75 : 1 }}>
@@ -67,13 +73,29 @@ export default function ExerciseCard({ record, onUpdate, onDelete }: Props) {
               disabled={completed >= target}
               style={btnStyle(completed >= target)}>＋</button>
           </div>
-          <div style={{ height: 5, borderRadius: 3, background: '#e5e7eb', marginTop: 8, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${pct}%`, background: isDone ? 'var(--green)' : 'var(--primary)', borderRadius: 3, transition: 'width 0.3s' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+            <div style={{ flex: 1, height: 5, borderRadius: 3, background: '#e5e7eb', overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${pct}%`, background: isDone ? 'var(--green)' : 'var(--primary)', borderRadius: 3, transition: 'width 0.3s' }} />
+            </div>
+            {!isDone && (
+              <button
+                onTouchStart={e => { e.preventDefault(); completeAll() }}
+                onMouseDown={e => { e.preventDefault(); completeAll() }}
+                style={{ ...btnCompleteStyle, touchAction: 'manipulation', userSelect: 'none' }}>
+                ✓完成
+              </button>
+            )}
           </div>
         </div>
       )}
     </div>
   )
+}
+
+const btnCompleteStyle: React.CSSProperties = {
+  padding: '3px 10px', borderRadius: 12, border: '1px solid var(--green)',
+  background: '#fff', color: 'var(--green)', fontSize: '.72rem', fontWeight: 600,
+  cursor: 'pointer', whiteSpace: 'nowrap',
 }
 
 function btnStyle(disabled: boolean): React.CSSProperties {

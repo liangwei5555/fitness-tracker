@@ -6,6 +6,7 @@ function todayStr() { const d = new Date(); return `${d.getFullYear()}-${String(
 function addDays(s: string, n: number) { const [y, m, d] = s.split('-').map(Number); const dt = new Date(y, m - 1, d); dt.setDate(dt.getDate() + n); return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}` }
 function weekMonday(s: string) { const [y, m, d] = s.split('-').map(Number); const dt = new Date(y, m - 1, d); const dow = dt.getDay() || 7; dt.setDate(dt.getDate() - dow + 1); return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}` }
 function monthStart(s: string) { return s.slice(0, 7) + '-01' }
+function monthEnd(s: string) { const [y, m] = s.split('-').map(Number); return `${y}-${String(m).padStart(2, '0')}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}` }
 
 const COLORS = ['#4f46e5', '#22c55e', '#eab308', '#ef4444', '#3b82f6', '#a855f7', '#ec4899', '#14b8a6', '#f97316', '#6366f1']
 
@@ -26,9 +27,9 @@ export default function Stats() {
   const [view, setView] = useState<'week' | 'month'>('week')
 
   useEffect(() => {
-    const to = todayStr()
-    const from = addDays(to, -60)
-    workoutApi.list({ date_from: from, date_to: to, page_size: '200' })
+    const from = addDays(todayStr(), -90)
+    // 不限制 date_to，确保整周/整月的未来日期记录也能统计
+    workoutApi.list({ date_from: from, page_size: '200' })
       .then(r => { setRecords(Array.isArray(r?.data) ? r.data : []) })
       .catch(() => setError(true))
       .finally(() => setLoading(false))
@@ -58,10 +59,11 @@ export default function Stats() {
     .map(([name, sets]) => ({ name, sets }))
     .sort((a, b) => b.sets - a.sets)
 
-  // 每日趋势
+  // 每日趋势：覆盖整个周期（本周一到周日 / 本月1号到月末）
+  const periodEnd = view === 'week' ? addDays(weekStart, 6) : monthEnd(weekStart)
   const dailyData: { label: string; sets: number }[] = []
   let cursor = weekStart
-  while (cursor <= today) {
+  while (cursor <= periodEnd) {
     const parts = cursor.split('-').map(Number)
     dailyData.push({ label: `${parts[1]}/${parts[2]}`, sets: 0 })
     cursor = addDays(cursor, 1)
