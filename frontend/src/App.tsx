@@ -7,7 +7,7 @@ import './App.css'
 
 const TABS = [
   { to: '/', label: '训练', icon: '📅', exact: true },
-  { to: '/photos', label: '照片', icon: '📸' },
+  { to: '/photos', label: '相册', icon: '🖼️' },
   { to: '/stats', label: '统计', icon: '📊' },
   { to: '/goals', label: '目标', icon: '🎯' },
 ]

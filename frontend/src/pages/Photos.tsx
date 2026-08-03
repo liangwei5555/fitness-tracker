@@ -38,12 +38,12 @@ export default function Photos() {
   return (
     <div style={{ paddingBottom: 80 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <span style={{ fontSize: '.9rem', color: 'var(--text-secondary)' }}>{photos.length} 张照片</span>
+        <span style={{ fontSize: '.9rem', color: 'var(--text-secondary)' }}>全部照片 · {photos.length} 张</span>
         <button className="btn btn-primary btn-sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
-          {uploading ? '上传中...' : '📸 拍照/上传'}
+          {uploading ? '上传中...' : '📷 拍照/相册'}
         </button>
       </div>
-      <input ref={fileRef} type="file" accept="image/*" capture="environment"
+      <input ref={fileRef} type="file" accept="image/*"
         style={{ display: 'none' }} onChange={upload} />
 
       {loading ? (

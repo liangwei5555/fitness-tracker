@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { workoutApi, type WorkoutRecord } from '../api'
+import { useEffect, useState, useRef } from 'react'
+import { workoutApi, photoApi, type WorkoutRecord, type DailyPhoto } from '../api'
 import ExerciseCard from '../components/ExerciseCard'
 
 function todayStr() { return new Date().toISOString().slice(0, 10) }
@@ -19,7 +19,13 @@ export default function TodayWorkout() {
   const [records, setRecords] = useState<WorkoutRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ exercise_name: '', target_sets: 3, reps: 12, weight_kg: '' })
+  const [form, setForm] = useState({ exercise_name: '', target_sets: 3, reps: 12, weight_kg: '', plan_date: date })
+
+  // ─── 照片 ───
+  const [photos, setPhotos] = useState<DailyPhoto[]>([])
+  const [uploading, setUploading] = useState(false)
+  const [viewing, setViewing] = useState<DailyPhoto | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const load = () => {
     setLoading(true)
@@ -27,6 +33,10 @@ export default function TodayWorkout() {
       .then(r => setRecords(r.data || []))
       .catch(() => {})
       .finally(() => setLoading(false))
+    // 同时加载当前日期的照片
+    photoApi.list({ date_from: date, date_to: date })
+      .then(r => setPhotos(r.data || []))
+      .catch(() => {})
   }
   useEffect(() => { load() }, [date])
 
@@ -41,11 +51,11 @@ export default function TodayWorkout() {
     if (!form.exercise_name.trim()) return
     try {
       await workoutApi.create({
-        date, exercise_name: form.exercise_name.trim(),
+        date: form.plan_date, exercise_name: form.exercise_name.trim(),
         target_sets: form.target_sets, reps: form.reps,
         weight_kg: form.weight_kg ? Number(form.weight_kg) : null,
       })
-      setForm({ exercise_name: '', target_sets: 3, reps: 12, weight_kg: '' })
+      setForm({ exercise_name: '', target_sets: 3, reps: 12, weight_kg: '', plan_date: date })
       setShowForm(false)
       load()
     } catch { /* ignore */ }
@@ -57,6 +67,21 @@ export default function TodayWorkout() {
 
   const handleDelete = async (id: number) => {
     try { await workoutApi.delete(id); load() } catch { /* ignore */ }
+  }
+
+  // ─── 照片操作 ───
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try { await photoApi.upload(file, date); load() }
+    catch { alert('上传失败') }
+    finally { setUploading(false); if (fileRef.current) fileRef.current.value = '' }
+  }
+
+  const handlePhotoDelete = async (id: number) => {
+    if (!window.confirm('删除这张照片？')) return
+    try { await photoApi.delete(id); load(); setViewing(null) } catch { /* ignore */ }
   }
 
   const QUICK_EXERCISES = ['卧推', '深蹲', '硬拉', '引体向上', '哑铃飞鸟', '弯举', '推举', '划船', '俯卧撑', '卷腹']
@@ -95,8 +120,61 @@ export default function TodayWorkout() {
         ))
       )}
 
+      {/* ─── 当日照片 ─── */}
+      {!loading && (
+        <div style={{ marginTop: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ fontSize: '.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              📸 训练照片 {photos.length > 0 && `(${photos.length})`}
+            </span>
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+            >
+              {uploading ? '上传中...' : '📷 拍照/相册'}
+            </button>
+          </div>
+          <input ref={fileRef} type="file" accept="image/*"
+            style={{ display: 'none' }} onChange={handleUpload} />
+
+          {photos.length > 0 ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {photos.map(p => (
+                <div key={p.id} onClick={() => setViewing(p)} style={{
+                  aspectRatio: '1', borderRadius: 8, overflow: 'hidden', cursor: 'pointer',
+                  border: '1px solid var(--border)',
+                }}>
+                  <img src={`/${p.file_path}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{
+              textAlign: 'center', padding: '20px 0', color: '#94a3b8', fontSize: '.8rem',
+              border: '1px dashed var(--border)', borderRadius: 8,
+            }}>
+              训练完可以拍照记录体态变化
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─── 照片大图查看 ─── */}
+      {viewing && (
+        <div className="modal-overlay" onClick={() => setViewing(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400, padding: 16 }}>
+            <img src={`/${viewing.file_path}`} alt="" style={{ width: '100%', borderRadius: 8, maxHeight: '60vh', objectFit: 'contain' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, fontSize: '.85rem', color: 'var(--text-secondary)' }}>
+              <span>{viewing.date} · {viewing.view_type}</span>
+              <button className="btn btn-danger btn-sm" onClick={() => handlePhotoDelete(viewing.id)}>删除</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Add button */}
-      <button onClick={() => setShowForm(true)} style={{
+      <button onClick={() => { setForm({ ...form, plan_date: date }); setShowForm(true) }} style={{
         position: 'fixed', bottom: 80, right: 20,
         width: 52, height: 52, borderRadius: '50%',
         background: 'var(--primary)', color: '#fff',
@@ -133,21 +211,34 @@ export default function TodayWorkout() {
               ))}
             </div>
 
+            {/* Date picker — plan for any day */}
+            <div className="form-group">
+              <label>训练日期</label>
+              <input className="form-input" type="date" value={form.plan_date}
+                onChange={e => setForm({ ...form, plan_date: e.target.value })} />
+            </div>
+
             <div className="form-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
               <div className="form-group">
                 <label>组数</label>
-                <input className="form-input" type="number" min={1} value={form.target_sets}
-                  onChange={e => setForm({ ...form, target_sets: Number(e.target.value) || 1 })} />
+                <input className="form-input" type="number" min={0} value={form.target_sets}
+                  onChange={e => {
+                    const v = e.target.value;
+                    setForm({ ...form, target_sets: v === '' ? 0 : Math.max(0, Number(v)) });
+                  }} />
               </div>
               <div className="form-group">
                 <label>次数/组</label>
-                <input className="form-input" type="number" min={1} value={form.reps}
-                  onChange={e => setForm({ ...form, reps: Number(e.target.value) || 1 })} />
+                <input className="form-input" type="number" min={0} value={form.reps}
+                  onChange={e => {
+                    const v = e.target.value;
+                    setForm({ ...form, reps: v === '' ? 0 : Math.max(0, Number(v)) });
+                  }} />
               </div>
               <div className="form-group">
                 <label>重量 kg</label>
-                <input className="form-input" type="text" value={form.weight_kg}
-                  onChange={e => setForm({ ...form, weight_kg: e.target.value })} placeholder="选填" />
+                <input className="form-input" type="text" inputMode="decimal" value={form.weight_kg}
+                  onChange={e => setForm({ ...form, weight_kg: e.target.value })} placeholder="填 0 或留空" />
               </div>
             </div>
 
