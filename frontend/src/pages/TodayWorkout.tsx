@@ -14,12 +14,31 @@ function fmtDate(d: string) {
   return `${dt.getMonth() + 1}月${dt.getDate()}日`
 }
 
+const DEFAULT_EXERCISES = ['卧推', '深蹲', '硬拉', '引体向上', '哑铃飞鸟', '弯举', '推举', '划船', '俯卧撑', '卷腹']
+
+function loadMyExercises(): string[] {
+  try {
+    const raw = localStorage.getItem('my_exercises')
+    if (raw) {
+      const arr = JSON.parse(raw)
+      if (Array.isArray(arr) && arr.length > 0) return arr
+    }
+  } catch { /* ignore */ }
+  return [...DEFAULT_EXERCISES]
+}
+
+function saveMyExercises(list: string[]) {
+  localStorage.setItem('my_exercises', JSON.stringify(list))
+}
+
 export default function TodayWorkout() {
   const [date, setDate] = useState(todayStr())
   const [records, setRecords] = useState<WorkoutRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ exercise_name: '', target_sets: 3, reps: 12, weight_kg: '', plan_date: date })
+  const [form, setForm] = useState({
+    exercise_name: '', target_sets: '', reps: '', weight_kg: '', plan_date: date,
+  })
 
   // ─── 照片 ───
   const [photos, setPhotos] = useState<DailyPhoto[]>([])
@@ -27,13 +46,17 @@ export default function TodayWorkout() {
   const [viewing, setViewing] = useState<DailyPhoto | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
+  // ─── 常用动作 ───
+  const [myExercises, setMyExercises] = useState<string[]>(loadMyExercises)
+  const [editingExercises, setEditingExercises] = useState(false)
+  const [newExercise, setNewExercise] = useState('')
+
   const load = () => {
     setLoading(true)
     workoutApi.list({ date_from: date, date_to: date, page_size: '200' })
       .then(r => setRecords(r.data || []))
       .catch(() => {})
       .finally(() => setLoading(false))
-    // 同时加载当前日期的照片
     photoApi.list({ date_from: date, date_to: date })
       .then(r => setPhotos(r.data || []))
       .catch(() => {})
@@ -46,16 +69,22 @@ export default function TodayWorkout() {
     setDate(d.toISOString().slice(0, 10))
   }
 
+  const openForm = () => {
+    setForm({ exercise_name: '', target_sets: '', reps: '', weight_kg: '', plan_date: date })
+    setShowForm(true)
+  }
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.exercise_name.trim()) return
     try {
       await workoutApi.create({
-        date: form.plan_date, exercise_name: form.exercise_name.trim(),
-        target_sets: form.target_sets, reps: form.reps,
+        date: form.plan_date,
+        exercise_name: form.exercise_name.trim(),
+        target_sets: Number(form.target_sets) || 0,
+        reps: Number(form.reps) || 0,
         weight_kg: form.weight_kg ? Number(form.weight_kg) : null,
       })
-      setForm({ exercise_name: '', target_sets: 3, reps: 12, weight_kg: '', plan_date: date })
       setShowForm(false)
       load()
     } catch { /* ignore */ }
@@ -84,7 +113,24 @@ export default function TodayWorkout() {
     try { await photoApi.delete(id); load(); setViewing(null) } catch { /* ignore */ }
   }
 
-  const QUICK_EXERCISES = ['卧推', '深蹲', '硬拉', '引体向上', '哑铃飞鸟', '弯举', '推举', '划船', '俯卧撑', '卷腹']
+  // ─── 常用动作编辑 ───
+  const addExercise = () => {
+    const name = newExercise.trim()
+    if (!name || myExercises.includes(name)) return
+    const updated = [...myExercises, name]
+    setMyExercises(updated)
+    saveMyExercises(updated)
+    setNewExercise('')
+  }
+  const removeExercise = (name: string) => {
+    const updated = myExercises.filter(e => e !== name)
+    setMyExercises(updated)
+    saveMyExercises(updated)
+  }
+  const resetExercises = () => {
+    setMyExercises([...DEFAULT_EXERCISES])
+    saveMyExercises([...DEFAULT_EXERCISES])
+  }
 
   return (
     <div style={{ paddingBottom: 20 }}>
@@ -127,16 +173,11 @@ export default function TodayWorkout() {
             <span style={{ fontSize: '.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
               📸 训练照片 {photos.length > 0 && `(${photos.length})`}
             </span>
-            <button
-              className="btn btn-sm btn-secondary"
-              onClick={() => fileRef.current?.click()}
-              disabled={uploading}
-            >
+            <button className="btn btn-sm btn-secondary" onClick={() => fileRef.current?.click()} disabled={uploading}>
               {uploading ? '上传中...' : '📷 拍照/相册'}
             </button>
           </div>
-          <input ref={fileRef} type="file" accept="image/*"
-            style={{ display: 'none' }} onChange={handleUpload} />
+          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleUpload} />
 
           {photos.length > 0 ? (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
@@ -174,7 +215,7 @@ export default function TodayWorkout() {
       )}
 
       {/* Add button */}
-      <button onClick={() => { setForm({ ...form, plan_date: date }); setShowForm(true) }} style={{
+      <button onClick={openForm} style={{
         position: 'fixed', bottom: 80, right: 20,
         width: 52, height: 52, borderRadius: '50%',
         background: 'var(--primary)', color: '#fff',
@@ -199,8 +240,8 @@ export default function TodayWorkout() {
             </div>
 
             {/* Quick pick */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
-              {QUICK_EXERCISES.map(ex => (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 4, alignItems: 'center' }}>
+              {myExercises.map(ex => (
                 <button key={ex} type="button" onClick={() => setForm({ ...form, exercise_name: ex })}
                   style={{
                     padding: '4px 10px', borderRadius: 16, border: '1px solid #e2e8f0',
@@ -209,10 +250,15 @@ export default function TodayWorkout() {
                     fontSize: '.78rem', cursor: 'pointer',
                   }}>{ex}</button>
               ))}
+              <button type="button" onClick={() => setEditingExercises(true)}
+                style={{
+                  padding: '4px 8px', borderRadius: 16, border: '1px dashed #cbd5e1',
+                  background: '#fff', color: '#94a3b8', fontSize: '.75rem', cursor: 'pointer',
+                }}>✎ 编辑</button>
             </div>
 
-            {/* Date picker — plan for any day */}
-            <div className="form-group">
+            {/* Date picker */}
+            <div className="form-group" style={{ marginTop: 12 }}>
               <label>训练日期</label>
               <input className="form-input" type="date" value={form.plan_date}
                 onChange={e => setForm({ ...form, plan_date: e.target.value })} />
@@ -221,24 +267,22 @@ export default function TodayWorkout() {
             <div className="form-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
               <div className="form-group">
                 <label>组数</label>
-                <input className="form-input" type="number" min={0} value={form.target_sets}
-                  onChange={e => {
-                    const v = e.target.value;
-                    setForm({ ...form, target_sets: v === '' ? 0 : Math.max(0, Number(v)) });
-                  }} />
+                <input className="form-input" type="number" min={0} placeholder="0"
+                  value={form.target_sets}
+                  onChange={e => setForm({ ...form, target_sets: e.target.value })} />
               </div>
               <div className="form-group">
                 <label>次数/组</label>
-                <input className="form-input" type="number" min={0} value={form.reps}
-                  onChange={e => {
-                    const v = e.target.value;
-                    setForm({ ...form, reps: v === '' ? 0 : Math.max(0, Number(v)) });
-                  }} />
+                <input className="form-input" type="number" min={0} placeholder="0"
+                  value={form.reps}
+                  onChange={e => setForm({ ...form, reps: e.target.value })} />
               </div>
               <div className="form-group">
                 <label>重量 kg</label>
-                <input className="form-input" type="text" inputMode="decimal" value={form.weight_kg}
-                  onChange={e => setForm({ ...form, weight_kg: e.target.value })} placeholder="填 0 或留空" />
+                <input className="form-input" type="text" inputMode="decimal"
+                  value={form.weight_kg}
+                  onChange={e => setForm({ ...form, weight_kg: e.target.value })}
+                  placeholder="选填" />
               </div>
             </div>
 
@@ -247,6 +291,46 @@ export default function TodayWorkout() {
               <button type="submit" className="btn btn-primary" disabled={!form.exercise_name.trim()}>保存</button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Edit exercises modal */}
+      {editingExercises && (
+        <div className="modal-overlay" onClick={() => setEditingExercises(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 360, padding: 20 }}>
+            <h2 style={{ fontSize: '1.05rem', marginBottom: 16 }}>编辑常用动作</h2>
+
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              <input className="form-input" value={newExercise}
+                onChange={e => setNewExercise(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addExercise() } }}
+                placeholder="输入新动作名称" style={{ flex: 1 }} />
+              <button type="button" className="btn btn-primary btn-sm" onClick={addExercise}>添加</button>
+            </div>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+              {myExercises.map(ex => (
+                <span key={ex} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  padding: '4px 8px 4px 12px', borderRadius: 16,
+                  background: '#f1f5f9', fontSize: '.82rem',
+                }}>
+                  {ex}
+                  <button type="button" onClick={() => removeExercise(ex)}
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      color: '#94a3b8', fontSize: '1rem', padding: '0 2px', lineHeight: 1,
+                    }}>×</button>
+                </span>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}>
+              <button type="button" className="btn btn-sm btn-secondary" onClick={resetExercises}
+                style={{ fontSize: '.75rem' }}>恢复默认</button>
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditingExercises(false)}>完成</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
