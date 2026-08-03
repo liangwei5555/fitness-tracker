@@ -2,9 +2,33 @@
 from datetime import date
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.workout import WorkoutRecord
+
+
+class WorkoutCreate(BaseModel):
+    date: str
+    exercise_name: str
+    sets: int = 0
+    target_sets: int = 0
+    completed_sets: int = 0
+    reps: int = 0
+    weight_kg: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class WorkoutUpdate(BaseModel):
+    date: Optional[str] = None
+    exercise_name: Optional[str] = None
+    sets: Optional[int] = None
+    target_sets: Optional[int] = None
+    completed_sets: Optional[int] = None
+    reps: Optional[int] = None
+    weight_kg: Optional[float] = None
+    notes: Optional[str] = None
+
 
 router = APIRouter(prefix="/api/workouts", tags=["workouts"])
 
@@ -33,18 +57,17 @@ def list_workouts(
 
 
 @router.post("/")
-def create_workout(data: dict, db: Session = Depends(get_db)):
+def create_workout(data: WorkoutCreate, db: Session = Depends(get_db)):
     """新增训练记录"""
-    target = data.get("target_sets") or data.get("sets", 0)
     record = WorkoutRecord(
-        date=date.fromisoformat(data["date"]) if data.get("date") else date.today(),
-        exercise_name=data["exercise_name"],
-        sets=target,
-        target_sets=target,
-        completed_sets=data.get("completed_sets", 0),
-        reps=data.get("reps", 0),
-        weight_kg=data.get("weight_kg"),
-        notes=data.get("notes"),
+        date=date.fromisoformat(data.date) if data.date else date.today(),
+        exercise_name=data.exercise_name,
+        sets=data.target_sets or data.sets,
+        target_sets=data.target_sets or data.sets,
+        completed_sets=data.completed_sets,
+        reps=data.reps,
+        weight_kg=data.weight_kg,
+        notes=data.notes,
     )
     db.add(record)
     db.commit()
@@ -53,20 +76,19 @@ def create_workout(data: dict, db: Session = Depends(get_db)):
 
 
 @router.put("/{record_id}")
-def update_workout(record_id: int, data: dict, db: Session = Depends(get_db)):
+def update_workout(record_id: int, data: WorkoutUpdate, db: Session = Depends(get_db)):
     """修改训练记录"""
     record = db.query(WorkoutRecord).filter(WorkoutRecord.id == record_id).first()
     if not record:
         raise HTTPException(404, "记录不存在")
-    for key in ["date", "exercise_name", "sets", "target_sets", "completed_sets", "reps", "weight_kg", "notes"]:
-        if key in data:
-            val = data[key]
-            if key == "date" and val:
-                val = date.fromisoformat(val)
-            setattr(record, key, val)
-    # 同步 target_sets 到 sets（兼容旧字段）
-    if "target_sets" in data:
-        record.sets = data["target_sets"]
+    updates = data.model_dump(exclude_unset=True)
+    for key, val in updates.items():
+        if key == "date" and val:
+            val = date.fromisoformat(val)
+        setattr(record, key, val)
+    # 同步 target_sets 到 sets
+    if "target_sets" in updates:
+        record.sets = updates["target_sets"]
     db.commit()
     db.refresh(record)
     return record

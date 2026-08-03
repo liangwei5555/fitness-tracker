@@ -1,9 +1,37 @@
 """改善目标 API"""
 from datetime import date
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.goal import ImprovementGoal
+
+
+class GoalCreate(BaseModel):
+    goal_name: str
+    target_metric: str
+    initial_value: Optional[float] = None
+    current_value: Optional[float] = None
+    target_value: Optional[float] = None
+    unit: Optional[str] = None
+    description: Optional[str] = None
+    started_at: Optional[str] = None
+    target_date: Optional[str] = None
+
+
+class GoalUpdate(BaseModel):
+    goal_name: Optional[str] = None
+    target_metric: Optional[str] = None
+    initial_value: Optional[float] = None
+    current_value: Optional[float] = None
+    target_value: Optional[float] = None
+    unit: Optional[str] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+    started_at: Optional[str] = None
+    target_date: Optional[str] = None
+
 
 router = APIRouter(prefix="/api/goals", tags=["goals"])
 
@@ -18,18 +46,18 @@ def list_goals(active_only: bool = False, db: Session = Depends(get_db)):
 
 
 @router.post("/")
-def create_goal(data: dict, db: Session = Depends(get_db)):
+def create_goal(data: GoalCreate, db: Session = Depends(get_db)):
     """创建新目标"""
     goal = ImprovementGoal(
-        goal_name=data["goal_name"],
-        target_metric=data["target_metric"],
-        initial_value=data.get("initial_value"),
-        current_value=data.get("current_value", data.get("initial_value")),
-        target_value=data.get("target_value"),
-        unit=data.get("unit"),
-        description=data.get("description"),
-        started_at=date.fromisoformat(data["started_at"]) if data.get("started_at") else date.today(),
-        target_date=date.fromisoformat(data["target_date"]) if data.get("target_date") else None,
+        goal_name=data.goal_name,
+        target_metric=data.target_metric,
+        initial_value=data.initial_value,
+        current_value=data.current_value or data.initial_value,
+        target_value=data.target_value,
+        unit=data.unit,
+        description=data.description,
+        started_at=date.fromisoformat(data.started_at) if data.started_at else date.today(),
+        target_date=date.fromisoformat(data.target_date) if data.target_date else None,
     )
     db.add(goal)
     db.commit()
@@ -38,18 +66,16 @@ def create_goal(data: dict, db: Session = Depends(get_db)):
 
 
 @router.put("/{goal_id}")
-def update_goal(goal_id: int, data: dict, db: Session = Depends(get_db)):
+def update_goal(goal_id: int, data: GoalUpdate, db: Session = Depends(get_db)):
     """更新目标"""
     goal = db.query(ImprovementGoal).filter(ImprovementGoal.id == goal_id).first()
     if not goal:
         raise HTTPException(404, "目标不存在")
-    for key in ["goal_name", "target_metric", "initial_value", "current_value",
-                "target_value", "unit", "description", "is_active", "target_date"]:
-        if key in data:
-            val = data[key]
-            if key in ("started_at", "target_date") and val:
-                val = date.fromisoformat(val)
-            setattr(goal, key, val)
+    updates = data.model_dump(exclude_unset=True)
+    for key, val in updates.items():
+        if key in ("started_at", "target_date") and val:
+            val = date.fromisoformat(val)
+        setattr(goal, key, val)
     db.commit()
     db.refresh(goal)
     return goal
