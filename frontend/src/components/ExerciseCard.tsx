@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { workoutApi, type WorkoutRecord } from '../api'
 
 interface Props { record: WorkoutRecord; onUpdate: (r: WorkoutRecord) => void; onDelete: (id: number) => void }
@@ -7,43 +8,47 @@ export default function ExerciseCard({ record, onUpdate, onDelete }: Props) {
   const completed = record.completed_sets || 0
   const isDone = target > 0 && completed >= target
   const pct = target > 0 ? Math.round((completed / target) * 100) : 0
+  const busy = useRef(false)
 
   const plus = async () => {
-    try { const r = await workoutApi.completeSet(record.id); onUpdate(r) } catch {}
+    if (busy.current || completed >= target) return
+    busy.current = true
+    try { const r = await workoutApi.completeSet(record.id); onUpdate(r) } catch {} finally { busy.current = false }
   }
   const minus = async () => {
-    try { const r = await workoutApi.undoSet(record.id); onUpdate(r) } catch {}
+    if (busy.current || completed <= 0) return
+    busy.current = true
+    try { const r = await workoutApi.undoSet(record.id); onUpdate(r) } catch {} finally { busy.current = false }
   }
 
   return (
     <div style={{ background: isDone ? '#f0fdf4' : '#fff', border: `1px solid ${isDone ? '#bbf7d0' : 'var(--border)'}`, borderRadius: 12, padding: '12px 14px', marginBottom: 8, opacity: isDone ? 0.75 : 1 }}>
-      {/* 顶部：动作名 + 删除 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
         <span style={{ fontSize: '1rem', fontWeight: 600, textDecoration: isDone ? 'line-through' : 'none', color: isDone ? '#16a34a' : 'var(--text)' }}>
           {isDone && '✅ '}{record.exercise_name}
         </span>
         <button onClick={() => onDelete(record.id)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.2rem', cursor: 'pointer', padding: '2px 6px' }}>×</button>
       </div>
-
-      {/* 信息行 */}
       <div style={{ fontSize: '.8rem', color: 'var(--text-secondary)', marginBottom: 8 }}>
         {target > 0 && <span>目标 {target} 组</span>}
         {record.reps > 0 && <span> · 每组 {record.reps} 次</span>}
         {(record.weight_kg ?? 0) > 0 && <span> · {record.weight_kg}kg</span>}
       </div>
-
-      {/* 计数器 + 进度条 */}
       {target > 0 && (
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button onClick={minus} disabled={completed <= 0}
-              style={counterBtnStyle(completed <= 0)}>−</button>
+            <button
+              onPointerDown={e => { e.preventDefault(); minus() }}
+              disabled={completed <= 0}
+              style={btnStyle(completed <= 0)}>−</button>
             <div style={{ flex: 1, textAlign: 'center' }}>
               <span style={{ fontSize: '1.3rem', fontWeight: 700, color: isDone ? '#16a34a' : 'var(--text)' }}>{completed}</span>
               <span style={{ fontSize: '.85rem', color: 'var(--text-secondary)' }}> / {target} 组</span>
             </div>
-            <button onClick={plus} disabled={completed >= target}
-              style={counterBtnStyle(completed >= target)}>＋</button>
+            <button
+              onPointerDown={e => { e.preventDefault(); plus() }}
+              disabled={completed >= target}
+              style={btnStyle(completed >= target)}>＋</button>
           </div>
           <div style={{ height: 5, borderRadius: 3, background: '#e5e7eb', marginTop: 8, overflow: 'hidden' }}>
             <div style={{ height: '100%', width: `${pct}%`, background: isDone ? 'var(--green)' : 'var(--primary)', borderRadius: 3, transition: 'width 0.3s' }} />
@@ -54,7 +59,7 @@ export default function ExerciseCard({ record, onUpdate, onDelete }: Props) {
   )
 }
 
-function counterBtnStyle(disabled: boolean): React.CSSProperties {
+function btnStyle(disabled: boolean): React.CSSProperties {
   return {
     width: 36, height: 36, borderRadius: '50%',
     border: `2px solid ${disabled ? '#e5e7eb' : 'var(--primary)'}`,
@@ -62,6 +67,6 @@ function counterBtnStyle(disabled: boolean): React.CSSProperties {
     color: disabled ? '#d1d5db' : 'var(--primary)',
     fontSize: '1.2rem', fontWeight: 700, cursor: disabled ? 'default' : 'pointer',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    WebkitTapHighlightColor: 'transparent',
+    touchAction: 'manipulation', userSelect: 'none',
   }
 }

@@ -2,34 +2,18 @@ import { useEffect, useState, useRef } from 'react'
 import { workoutApi, photoApi, type WorkoutRecord, type DailyPhoto } from '../api'
 import ExerciseCard from '../components/ExerciseCard'
 
-// ─── 日期工具 ───
 function pad2(n: number): string { return n < 10 ? `0${n}` : `${n}` }
-function dateStr(y: number, m: number, d: number): string { return `${y}-${pad2(m + 1)}-${pad2(d)}` }
-function todayStr(): string { const d = new Date(); return dateStr(d.getFullYear(), d.getMonth(), d.getDate()) }
+function toDateStr(y: number, m: number, d: number): string { return `${y}-${pad2(m + 1)}-${pad2(d)}` }
+function todayStr(): string { const d = new Date(); return toDateStr(d.getFullYear(), d.getMonth(), d.getDate()) }
 function parseDate(s: string): Date { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d) }
-function addDays(ds: string, n: number): string { const d = parseDate(ds); d.setDate(d.getDate() + n); return dateStr(d.getFullYear(), d.getMonth(), d.getDate()) }
-
+function addDays(s: string, n: number): string { const d = parseDate(s); d.setDate(d.getDate() + n); return toDateStr(d.getFullYear(), d.getMonth(), d.getDate()) }
 const WD = ['日', '一', '二', '三', '四', '五', '六']
+function fmtDate(s: string): string { const d = parseDate(s); return `${d.getMonth() + 1}月${d.getDate()}日 周${WD[d.getDay()]}` }
+function weekMon(s: string): string { const d = parseDate(s); const dow = d.getDay() || 7; d.setDate(d.getDate() - dow + 1); return toDateStr(d.getFullYear(), d.getMonth(), d.getDate()) }
 
-function fmtDateFull(d: string): string {
-  const dt = parseDate(d)
-  return `${dt.getMonth() + 1}月${dt.getDate()}日 周${WD[dt.getDay()]}`
-}
-
-function weekMonday(ds: string): string {
-  const d = parseDate(ds)
-  const dow = d.getDay() || 7
-  d.setDate(d.getDate() - dow + 1)
-  return dateStr(d.getFullYear(), d.getMonth(), d.getDate())
-}
-
-const DEFAULT_EXERCISES = ['卧推', '深蹲', '硬拉', '引体向上', '哑铃飞鸟', '弯举', '推举', '划船', '俯卧撑', '卷腹']
-
-function loadMyExercises(): string[] {
-  try { const r = localStorage.getItem('my_exercises'); if (r) { const a = JSON.parse(r); if (Array.isArray(a) && a.length) return a } } catch {}
-  return [...DEFAULT_EXERCISES]
-}
-function saveMyExercises(l: string[]) { localStorage.setItem('my_exercises', JSON.stringify(l)) }
+const DEF_EX = ['卧推', '深蹲', '硬拉', '引体向上', '哑铃飞鸟', '弯举', '推举', '划船', '俯卧撑', '卷腹']
+function loadMyEx(): string[] { try { const r = localStorage.getItem('my_exercises'); if (r) { const a = JSON.parse(r); if (Array.isArray(a) && a.length) return a } } catch {} return [...DEF_EX] }
+function saveMyEx(l: string[]) { localStorage.setItem('my_exercises', JSON.stringify(l)) }
 
 export default function TodayWorkout() {
   const today = todayStr()
@@ -37,41 +21,50 @@ export default function TodayWorkout() {
   const [records, setRecords] = useState<WorkoutRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ exercise_name: '', target_sets: '', reps: '', weight_kg: '', plan_date: date })
+  const [form, setForm] = useState({ name: '', sets: '', reps: '', wt: '', pd: date })
   const [photos, setPhotos] = useState<DailyPhoto[]>([])
   const [uploading, setUploading] = useState(false)
   const [viewing, setViewing] = useState<DailyPhoto | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
-  const [myExercises, setMyExercises] = useState<string[]>(loadMyExercises)
-  const [editingExercises, setEditingExercises] = useState(false)
-  const [newExercise, setNewExercise] = useState('')
+  const [myEx, setMyEx] = useState<string[]>(loadMyEx)
+  const [editingEx, setEditingEx] = useState(false)
+  const [newEx, setNewEx] = useState('')
 
-  // 历史配置
-  interface ExConfig { name: string; sets: number; reps: number; weight: number | null }
-  const [recentConfigs, setRecentConfigs] = useState<ExConfig[]>([])
-  const [lastWorkoutDate, setLastWorkoutDate] = useState<string | null>(null)
-  const [lastWorkoutRecords, setLastWorkoutRecords] = useState<WorkoutRecord[]>([])
+  interface ExCfg { name: string; sets: number; reps: number; wt: number | null }
+  const [recentCfg, setRecentCfg] = useState<ExCfg[]>([])
+  const [lastDate, setLastDate] = useState<string | null>(null)
+  const [lastRecs, setLastRecs] = useState<WorkoutRecord[]>([])
   const [copying, setCopying] = useState(false)
 
-  // 周视图基点（独立于当前选中日期）
-  const [weekBase, setWeekBase] = useState(weekMonday(today))
+  const [weekBase, setWeekBase] = useState(weekMon(today))
 
-  // ═══ 滑动 ═══
-  const touchStartX = useRef(0)
+  // ─── 滑动 ───
+  const tsX = useRef(0)
+  const tsY = useRef(0)
   const dateOnStart = useRef(date)
   const dateRef = useRef(date); dateRef.current = date
+  const ignoring = useRef(false)
 
-  const onTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX
+  const onTS = (e: React.TouchEvent) => {
+    // 忽略弹窗内的触摸
+    const target = e.target as HTMLElement
+    if (target.closest('.modal-overlay') || target.closest('button') || target.closest('input') || target.tagName === 'BUTTON' || target.tagName === 'INPUT') {
+      ignoring.current = true; return
+    }
+    ignoring.current = false
+    tsX.current = e.touches[0].clientX
+    tsY.current = e.touches[0].clientY
     dateOnStart.current = dateRef.current
   }
-  const onTouchEnd = (e: React.TouchEvent) => {
-    const dx = e.changedTouches[0].clientX - touchStartX.current
-    if (Math.abs(dx) < 40) return
+  const onTE = (e: React.TouchEvent) => {
+    if (ignoring.current) return
+    const dx = e.changedTouches[0].clientX - tsX.current
+    const dy = e.changedTouches[0].clientY - tsY.current
+    if (Math.abs(dx) < 35 || Math.abs(dx) < Math.abs(dy)) return
     setDate(addDays(dateOnStart.current, dx > 0 ? -1 : 1))
   }
 
-  // ═══ 数据 ═══
+  // ─── 数据 ───
   const load = () => {
     setLoading(true)
     workoutApi.list({ date_from: date, date_to: date, page_size: '200' })
@@ -79,30 +72,33 @@ export default function TodayWorkout() {
     photoApi.list({ date_from: date, date_to: date })
       .then(r => setPhotos(r.data || [])).catch(() => {})
   }
-  const loadHistory = () => {
+  const loadHist = () => {
     const to = todayStr(); const from = addDays(to, -60)
     workoutApi.list({ date_from: from, date_to: to, page_size: '500' }).then(r => {
-      const recs = r.data || []
-      const seen = new Set<string>(); const configs: ExConfig[] = []
+      const recs = r.data || [] as WorkoutRecord[]
+      const seen = new Set<string>(); const cfgs: ExCfg[] = []
       for (const rec of recs) {
         const k = `${rec.exercise_name}|${rec.target_sets || rec.sets}|${rec.reps}|${rec.weight_kg ?? 0}`
-        if (!seen.has(k) && rec.exercise_name) { seen.add(k); configs.push({ name: rec.exercise_name, sets: rec.target_sets || rec.sets || 0, reps: rec.reps || 0, weight: rec.weight_kg }) }
+        if (!seen.has(k) && rec.exercise_name) { seen.add(k); cfgs.push({ name: rec.exercise_name, sets: rec.target_sets || rec.sets || 0, reps: rec.reps || 0, wt: rec.weight_kg }) }
       }
-      setRecentConfigs(configs.slice(0, 20))
-      const dates = [...new Set(recs.map(r => r.date))].sort().reverse()
-      const ld = dates.find(d => d !== to) || null
-      if (ld) { setLastWorkoutDate(ld); setLastWorkoutRecords(recs.filter(r => r.date === ld)) }
+      setRecentCfg(cfgs.slice(0, 20))
+      const dates = [...new Set(recs.map(r2 => r2.date))].sort().reverse()
+      const ld = dates.find(d2 => d2 !== to) || null
+      if (ld) { setLastDate(ld); setLastRecs(recs.filter(r2 => r2.date === ld)) }
     }).catch(() => {})
   }
   useEffect(() => { load() }, [date])
-  useEffect(() => { loadHistory() }, [])
+  useEffect(() => { loadHist() }, [])
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.exercise_name.trim()) return
+    if (!form.name.trim()) return
     try {
-      await workoutApi.create({ date: form.plan_date, exercise_name: form.exercise_name.trim(), target_sets: Number(form.target_sets) || 0, reps: Number(form.reps) || 0, weight_kg: form.weight_kg ? Number(form.weight_kg) : null })
-      setShowForm(false); load(); loadHistory()
+      await workoutApi.create({ date: form.pd, exercise_name: form.name.trim(), target_sets: Number(form.sets) || 0, reps: Number(form.reps) || 0, weight_kg: form.wt ? Number(form.wt) : null })
+      setShowForm(false)
+      // 如果添加的日期不是当前查看的日期，切换到那天
+      if (form.pd !== date) setDate(form.pd)
+      load(); loadHist()
     } catch {}
   }
 
@@ -115,63 +111,60 @@ export default function TodayWorkout() {
     try { await photoApi.upload(f, date); load() } catch { alert('上传失败') }
     finally { setUploading(false); if (fileRef.current) fileRef.current.value = '' }
   }
-  const handlePhotoDelete = async (id: number) => {
-    if (!window.confirm('删除？')) return
-    try { await photoApi.delete(id); load(); setViewing(null) } catch {}
+  const delPhoto = async (id: number) => { if (!window.confirm('删除？')) return; try { await photoApi.delete(id); load(); setViewing(null) } catch {} }
+  const copyDay = async () => {
+    if (!lastRecs.length) return; setCopying(true)
+    try { for (const rec of lastRecs) { await workoutApi.create({ date, exercise_name: rec.exercise_name, target_sets: rec.target_sets || rec.sets || 0, reps: rec.reps || 0, weight_kg: rec.weight_kg }) }; load() } catch {} finally { setCopying(false) }
   }
-  const copyLastWorkout = async () => {
-    if (!lastWorkoutRecords.length) return; setCopying(true)
-    try { for (const rec of lastWorkoutRecords) { await workoutApi.create({ date, exercise_name: rec.exercise_name, target_sets: rec.target_sets || rec.sets || 0, reps: rec.reps || 0, weight_kg: rec.weight_kg }) }; load() } catch {} finally { setCopying(false) }
-  }
+  const addEx = () => { const n = newEx.trim(); if (!n || myEx.includes(n)) return; const u = [...myEx, n]; setMyEx(u); saveMyEx(u); setNewEx('') }
+  const rmEx = (n: string) => { const u = myEx.filter(e => e !== n); setMyEx(u); saveMyEx(u) }
 
-  const addEx = () => { const n = newExercise.trim(); if (!n || myExercises.includes(n)) return; const u = [...myExercises, n]; setMyExercises(u); saveMyExercises(u); setNewExercise('') }
-  const rmEx = (n: string) => { const u = myExercises.filter(e => e !== n); setMyExercises(u); saveMyExercises(u) }
-
-  // ═══ 周视图 ═══
+  // ─── 周视图 ───
   const weekDays: { label: string; ds: string; isToday: boolean }[] = []
   for (let i = 0; i < 7; i++) {
-    const ds = addDays(weekBase, i)
-    weekDays.push({ label: WD[parseDate(ds).getDay()], ds, isToday: ds === today })
+    const d = addDays(weekBase, i)
+    weekDays.push({ label: WD[parseDate(d).getDay()], ds: d, isToday: d === today })
   }
-
-  const changeWeek = (n: number) => setWeekBase(addDays(weekBase, n * 7))
+  const chWeek = (n: number) => setWeekBase(addDays(weekBase, n * 7))
 
   return (
-    <div style={{ paddingBottom: 20 }} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-      {/* ═══ 周视图条 ═══ */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
-        <button onClick={() => changeWeek(-1)} style={{ ...btnSmall, flex: '0 0 auto', padding: '4px 6px', fontSize: '.75rem' }}>◀</button>
+    <div style={{ paddingBottom: 20, minHeight: 'calc(100vh - 110px)' }}
+      onTouchStart={onTS} onTouchEnd={onTE}>
+      {/* ═══ 周视图 ═══ */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginBottom: 2 }}>
+        <button onClick={() => chWeek(-1)} style={{ ...btnS, flex: '0 0 auto', padding: '4px 6px', fontSize: '.75rem' }}>◀</button>
         <div style={{ display: 'flex', justifyContent: 'space-around', flex: 1, background: '#fff', borderRadius: 10, border: '1px solid var(--border)', padding: '6px 2px' }}>
           {weekDays.map(d => (
             <button key={d.ds} onClick={() => setDate(d.ds)}
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '4px 0', borderRadius: 8, border: 'none', cursor: 'pointer', minWidth: 34, background: d.ds === date ? 'var(--primary)' : 'transparent', color: d.ds === date ? '#fff' : d.isToday ? 'var(--primary)' : 'var(--text-secondary)', fontWeight: d.ds === date ? 600 : 400 }}>
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '4px 0', borderRadius: 8, border: d.isToday ? '2px solid var(--primary)' : '2px solid transparent', cursor: 'pointer', minWidth: 34, background: d.ds === date ? 'var(--primary)' : 'transparent', color: d.ds === date ? '#fff' : d.isToday ? 'var(--primary)' : 'var(--text-secondary)', fontWeight: d.ds === date ? 600 : 400 }}>
               <span style={{ fontSize: '.65rem' }}>{d.label}</span>
               <span style={{ fontSize: '.9rem', fontWeight: d.ds === date ? 700 : 500 }}>{parseDate(d.ds).getDate()}</span>
             </button>
           ))}
         </div>
-        <button onClick={() => changeWeek(1)} style={{ ...btnSmall, flex: '0 0 auto', padding: '4px 6px', fontSize: '.75rem' }}>▶</button>
+        <button onClick={() => chWeek(1)} style={{ ...btnS, flex: '0 0 auto', padding: '4px 6px', fontSize: '.75rem' }}>▶</button>
       </div>
 
-      {/* 日期标题 */}
       <div style={{ textAlign: 'center', padding: '8px 0 4px', fontSize: '.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-        {fmtDateFull(date)}
-        <span style={{ fontSize: '.7rem', color: '#94a3b8', marginLeft: 8 }}>← 滑动切换 →</span>
+        {fmtDate(date)}
+        {date === today && <span style={{ marginLeft: 6, padding: '1px 8px', borderRadius: 10, background: 'var(--primary)', color: '#fff', fontSize: '.7rem', fontWeight: 500 }}>今天</span>}
       </div>
 
       {/* ═══ 内容 ═══ */}
-      {loading ? <div className="loading-spinner"><div className="spin" />加载中...</div>
-        : records.length === 0 ? (
-          <div className="empty-state" style={{ padding: 28 }}>
-            <div style={{ fontSize: '2.2rem', marginBottom: 6 }}>💪</div>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: 12 }}>这天还没安排训练</p>
-            {lastWorkoutDate && lastWorkoutRecords.length > 0 && (
-              <button className="btn btn-sm btn-secondary" onClick={copyLastWorkout} disabled={copying} style={{ fontSize: '.78rem' }}>
-                {copying ? '复制中...' : `📋 复用 ${lastWorkoutDate} 的计划`}
-              </button>
-            )}
-          </div>
-        ) : records.map(r => <ExerciseCard key={r.id} record={r} onUpdate={handleUpdate} onDelete={handleDelete} />)}
+      <div style={{ minHeight: 200 }}>
+        {loading ? <div className="loading-spinner"><div className="spin" />加载中...</div>
+          : records.length === 0 ? (
+            <div className="empty-state" style={{ padding: 28 }}>
+              <div style={{ fontSize: '2.2rem', marginBottom: 6 }}>💪</div>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: 12 }}>这天还没安排训练</p>
+              {lastDate && lastRecs.length > 0 && (
+                <button className="btn btn-sm btn-secondary" onClick={copyDay} disabled={copying} style={{ fontSize: '.78rem' }}>
+                  {copying ? '复制中...' : `📋 复用 ${lastDate} 的计划`}
+                </button>
+              )}
+            </div>
+          ) : records.map(r => <ExerciseCard key={r.id} record={r} onUpdate={handleUpdate} onDelete={handleDelete} />)}
+      </div>
 
       {/* 照片 */}
       {!loading && (
@@ -190,39 +183,39 @@ export default function TodayWorkout() {
       )}
 
       {/* 照片大图 */}
-      {viewing && <div className="modal-overlay" onClick={() => setViewing(null)}><div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400, padding: 16 }}><img src={`/${viewing.file_path}`} alt="" style={{ width: '100%', borderRadius: 8, maxHeight: '60vh', objectFit: 'contain' }} /><div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, fontSize: '.8rem', color: 'var(--text-secondary)' }}><span>{viewing.date} · {viewing.view_type}</span><button className="btn btn-danger btn-sm" onClick={() => handlePhotoDelete(viewing.id)}>删除</button></div></div></div>}
+      {viewing && <div className="modal-overlay" onClick={() => setViewing(null)}><div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400, padding: 16 }}><img src={`/${viewing.file_path}`} alt="" style={{ width: '100%', borderRadius: 8, maxHeight: '60vh', objectFit: 'contain' }} /><div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, fontSize: '.8rem', color: 'var(--text-secondary)' }}><span>{viewing.date} · {viewing.view_type}</span><button className="btn btn-danger btn-sm" onClick={() => delPhoto(viewing.id)}>删除</button></div></div></div>}
 
       {/* ＋ */}
-      <button onClick={() => { setForm({ exercise_name: '', target_sets: '', reps: '', weight_kg: '', plan_date: date }); setShowForm(true) }} style={{ position: 'fixed', bottom: 80, right: 20, width: 52, height: 52, borderRadius: '50%', background: 'var(--primary)', color: '#fff', border: 'none', fontSize: '1.6rem', cursor: 'pointer', boxShadow: '0 4px 16px rgba(79,70,229,0.4)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>＋</button>
+      <button onClick={() => { setForm({ name: '', sets: '', reps: '', wt: '', pd: date }); setShowForm(true) }} style={{ position: 'fixed', bottom: 80, right: 20, width: 52, height: 52, borderRadius: '50%', background: 'var(--primary)', color: '#fff', border: 'none', fontSize: '1.6rem', cursor: 'pointer', boxShadow: '0 4px 16px rgba(79,70,229,0.4)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>＋</button>
 
       {/* 添加弹窗 */}
       {showForm && <div className="modal-overlay" onClick={() => setShowForm(false)}><form className="modal" onClick={e => e.stopPropagation()} onSubmit={submit} style={{ maxWidth: 360, padding: 20 }}><h2 style={{ fontSize: '1.05rem', marginBottom: 14 }}>添加训练动作</h2>
-        <div className="form-group"><label>动作名称</label><input className="form-input" value={form.exercise_name} onChange={e => setForm({ ...form, exercise_name: e.target.value })} placeholder="如：卧推、深蹲" autoFocus /></div>
+        <div className="form-group"><label>动作名称</label><input className="form-input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="如：卧推、深蹲" autoFocus /></div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 4, alignItems: 'center' }}>
-          {myExercises.map(ex => <button key={ex} type="button" onClick={() => setForm({ ...form, exercise_name: ex })} style={{ padding: '4px 10px', borderRadius: 16, border: '1px solid #e2e8f0', background: form.exercise_name === ex ? 'var(--primary)' : '#fff', color: form.exercise_name === ex ? '#fff' : '#64748b', fontSize: '.75rem', cursor: 'pointer' }}>{ex}</button>)}
-          <button type="button" onClick={() => setEditingExercises(true)} style={{ padding: '4px 8px', borderRadius: 16, border: '1px dashed #cbd5e1', background: '#fff', color: '#94a3b8', fontSize: '.72rem', cursor: 'pointer' }}>✎ 编辑</button>
+          {myEx.map(ex => <button key={ex} type="button" onClick={() => setForm({ ...form, name: ex })} style={{ padding: '4px 10px', borderRadius: 16, border: '1px solid #e2e8f0', background: form.name === ex ? 'var(--primary)' : '#fff', color: form.name === ex ? '#fff' : '#64748b', fontSize: '.75rem', cursor: 'pointer' }}>{ex}</button>)}
+          <button type="button" onClick={() => setEditingEx(true)} style={{ padding: '4px 8px', borderRadius: 16, border: '1px dashed #cbd5e1', background: '#fff', color: '#94a3b8', fontSize: '.72rem', cursor: 'pointer' }}>✎ 编辑</button>
         </div>
-        {recentConfigs.length > 0 && <div style={{ marginBottom: 8 }}><div style={{ fontSize: '.72rem', color: '#94a3b8', marginBottom: 4 }}>📋 历史记录</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>{recentConfigs.map((c, i) => <button key={i} type="button" onClick={() => setForm({ ...form, exercise_name: c.name, target_sets: String(c.sets || ''), reps: String(c.reps || ''), weight_kg: c.weight ? String(c.weight) : '' })} style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '.72rem', cursor: 'pointer', textAlign: 'left', lineHeight: 1.3 }}><div style={{ fontWeight: 500 }}>{c.name}</div><div style={{ color: '#94a3b8', fontSize: '.68rem' }}>{c.sets > 0 ? `${c.sets}组` : ''}{c.reps > 0 ? ` ×${c.reps}` : ''}{c.weight ? ` ${c.weight}kg` : ''}</div></button>)}</div></div>}
-        <div className="form-group" style={{ marginTop: 8 }}><label>训练日期</label><input className="form-input" type="date" value={form.plan_date} onChange={e => setForm({ ...form, plan_date: e.target.value })} /></div>
+        {recentCfg.length > 0 && <div style={{ marginBottom: 8 }}><div style={{ fontSize: '.72rem', color: '#94a3b8', marginBottom: 4 }}>📋 历史记录（点一下填入）</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>{recentCfg.map((c, i) => <button key={i} type="button" onClick={() => setForm({ ...form, name: c.name, sets: String(c.sets || ''), reps: String(c.reps || ''), wt: c.wt ? String(c.wt) : '' })} style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '.72rem', cursor: 'pointer', textAlign: 'left', lineHeight: 1.3 }}><div style={{ fontWeight: 500 }}>{c.name}</div><div style={{ color: '#94a3b8', fontSize: '.68rem' }}>{c.sets > 0 ? `${c.sets}组` : ''}{c.reps > 0 ? ` ×${c.reps}` : ''}{c.wt ? ` ${c.wt}kg` : ''}</div></button>)}</div></div>}
+        <div className="form-group" style={{ marginTop: 8 }}><label>训练日期</label><input className="form-input" type="date" value={form.pd} onChange={e => setForm({ ...form, pd: e.target.value })} /></div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-          <div className="form-group"><label>组数</label><input className="form-input" type="number" min={0} placeholder="0" value={form.target_sets} onChange={e => setForm({ ...form, target_sets: e.target.value })} /></div>
+          <div className="form-group"><label>组数</label><input className="form-input" type="number" min={0} placeholder="0" value={form.sets} onChange={e => setForm({ ...form, sets: e.target.value })} /></div>
           <div className="form-group"><label>次数/组</label><input className="form-input" type="number" min={0} placeholder="0" value={form.reps} onChange={e => setForm({ ...form, reps: e.target.value })} /></div>
-          <div className="form-group"><label>重量 kg</label><input className="form-input" type="text" inputMode="decimal" value={form.weight_kg} onChange={e => setForm({ ...form, weight_kg: e.target.value })} placeholder="选填" /></div>
+          <div className="form-group"><label>重量 kg</label><input className="form-input" type="text" inputMode="decimal" value={form.wt} onChange={e => setForm({ ...form, wt: e.target.value })} placeholder="选填" /></div>
         </div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
           <button type="button" className="btn btn-secondary" onClick={() => setShowForm(false)}>取消</button>
-          <button type="submit" className="btn btn-primary" disabled={!form.exercise_name.trim()}>保存</button>
+          <button type="submit" className="btn btn-primary" disabled={!form.name.trim()}>保存</button>
         </div>
       </form></div>}
 
       {/* 编辑动作弹窗 */}
-      {editingExercises && <div className="modal-overlay" onClick={() => setEditingExercises(false)}><div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 360, padding: 20 }}><h2 style={{ fontSize: '1.05rem', marginBottom: 14 }}>编辑常用动作</h2>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}><input className="form-input" value={newExercise} onChange={e => setNewExercise(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEx() } }} placeholder="新动作名称" style={{ flex: 1 }} /><button type="button" className="btn btn-primary btn-sm" onClick={addEx}>添加</button></div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>{myExercises.map(ex => <span key={ex} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px 4px 12px', borderRadius: 16, background: '#f1f5f9', fontSize: '.8rem' }}>{ex}<button type="button" onClick={() => rmEx(ex)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '1rem', padding: '0 2px', lineHeight: 1 }}>×</button></span>)}</div>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}><button type="button" className="btn btn-sm btn-secondary" onClick={() => { setMyExercises([...DEFAULT_EXERCISES]); saveMyExercises([...DEFAULT_EXERCISES]) }} style={{ fontSize: '.72rem' }}>恢复默认</button><button type="button" className="btn btn-primary btn-sm" onClick={() => setEditingExercises(false)}>完成</button></div>
+      {editingEx && <div className="modal-overlay" onClick={() => setEditingEx(false)}><div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 360, padding: 20 }}><h2 style={{ fontSize: '1.05rem', marginBottom: 14 }}>编辑常用动作</h2>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}><input className="form-input" value={newEx} onChange={e => setNewEx(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEx() } }} placeholder="新动作名称" style={{ flex: 1 }} /><button type="button" className="btn btn-primary btn-sm" onClick={addEx}>添加</button></div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>{myEx.map(ex => <span key={ex} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px 4px 12px', borderRadius: 16, background: '#f1f5f9', fontSize: '.8rem' }}>{ex}<button type="button" onClick={() => rmEx(ex)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '1rem', padding: '0 2px', lineHeight: 1 }}>×</button></span>)}</div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}><button type="button" className="btn btn-sm btn-secondary" onClick={() => { setMyEx([...DEF_EX]); saveMyEx([...DEF_EX]) }} style={{ fontSize: '.72rem' }}>恢复默认</button><button type="button" className="btn btn-primary btn-sm" onClick={() => setEditingEx(false)}>完成</button></div>
       </div></div>}
     </div>
   )
 }
 
-const btnSmall: React.CSSProperties = { background: '#fff', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', color: 'var(--text)' }
+const btnS: React.CSSProperties = { background: '#fff', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', color: 'var(--text)' }
