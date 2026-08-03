@@ -1,5 +1,21 @@
+@echo off
 cd /d C:\Users\33125\Projects\fitness-tracker
-git remote set-url origin https://liangwei5555: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@github.com/liangwei5555/fitness-tracker.git
+
+echo === 检查变更 ===
+git status --short
+
+echo.
+echo === 暂存所有变更 ===
+git add -A
+
+echo.
+echo === 正在提交 ===
+git commit -m "update: %date% %time%"
+
+echo.
+echo === 正在推送到 GitHub ===
 git push
-echo done
+
+echo.
+echo === 完成！Railway 将自动部署 ===
 pause
