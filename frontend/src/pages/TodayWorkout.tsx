@@ -1,17 +1,24 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { workoutApi, photoApi, type WorkoutRecord, type DailyPhoto } from '../api'
 import ExerciseCard from '../components/ExerciseCard'
 
 function todayStr() { return new Date().toISOString().slice(0, 10) }
-function fmtDate(d: string) {
+
+function getWeekMonday(dateStr: string): Date {
+  const d = new Date(dateStr + 'T00:00:00')
+  const day = d.getDay() || 7 // Mon=1..Sun=7
+  d.setDate(d.getDate() - day + 1)
+  return d
+}
+
+function formatWeekday(d: Date): string {
+  const days = ['日', '一', '二', '三', '四', '五', '六']
+  return days[d.getDay()]
+}
+
+function fmtDateFull(d: string): string {
   const dt = new Date(d + 'T00:00:00')
-  const now = new Date(); const today = now.toISOString().slice(0, 10)
-  if (d === today) return '今天'
-  const yesterday = new Date(now.getTime() - 86400000).toISOString().slice(0, 10)
-  if (d === yesterday) return '昨天'
-  const tomorrow = new Date(now.getTime() + 86400000).toISOString().slice(0, 10)
-  if (d === tomorrow) return '明天'
-  return `${dt.getMonth() + 1}月${dt.getDate()}日`
+  return `${dt.getMonth() + 1}月${dt.getDate()}日 周${formatWeekday(dt)}`
 }
 
 const DEFAULT_EXERCISES = ['卧推', '深蹲', '硬拉', '引体向上', '哑铃飞鸟', '弯举', '推举', '划船', '俯卧撑', '卷腹']
@@ -32,7 +39,8 @@ function saveMyExercises(list: string[]) {
 }
 
 export default function TodayWorkout() {
-  const [date, setDate] = useState(todayStr())
+  const today = todayStr()
+  const [date, setDate] = useState(today)
   const [records, setRecords] = useState<WorkoutRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -51,6 +59,60 @@ export default function TodayWorkout() {
   const [editingExercises, setEditingExercises] = useState(false)
   const [newExercise, setNewExercise] = useState('')
 
+  // ─── 滑动手势 ───
+  const touchStartX = useRef(0)
+  const touchStartY = useRef(0)
+  const [swipeOffset, setSwipeOffset] = useState(0)
+  const [isSwiping, setIsSwiping] = useState(false)
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX
+    touchStartY.current = e.touches[0].clientY
+    setIsSwiping(true)
+  }, [])
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!isSwiping) return
+    const dx = e.touches[0].clientX - touchStartX.current
+    const dy = e.touches[0].clientY - touchStartY.current
+    // Only track horizontal swipes (ignore vertical scrolls)
+    if (Math.abs(dx) > Math.abs(dy)) {
+      setSwipeOffset(dx)
+    }
+  }, [isSwiping])
+
+  const handleTouchEnd = useCallback(() => {
+    setIsSwiping(false)
+    const threshold = 60
+    if (swipeOffset > threshold) {
+      // Swipe right → previous day
+      const d = new Date(date + 'T00:00:00')
+      d.setDate(d.getDate() - 1)
+      setDate(d.toISOString().slice(0, 10))
+    } else if (swipeOffset < -threshold) {
+      // Swipe left → next day
+      const d = new Date(date + 'T00:00:00')
+      d.setDate(d.getDate() + 1)
+      setDate(d.toISOString().slice(0, 10))
+    }
+    setSwipeOffset(0)
+  }, [swipeOffset, date])
+
+  // ─── 周视图 ───
+  const monday = getWeekMonday(date)
+  const weekDays: { label: string; dateStr: string; isToday: boolean }[] = []
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday)
+    d.setDate(monday.getDate() + i)
+    const ds = d.toISOString().slice(0, 10)
+    weekDays.push({
+      label: formatWeekday(d),
+      dateStr: ds,
+      isToday: ds === today,
+    })
+  }
+
+  // ═══ 数据加载 ═══
   const load = () => {
     setLoading(true)
     workoutApi.list({ date_from: date, date_to: date, page_size: '200' })
@@ -134,74 +196,116 @@ export default function TodayWorkout() {
 
   return (
     <div style={{ paddingBottom: 20 }}>
-      {/* Date switcher */}
+      {/* ═══ 周视图条 ═══ */}
       <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        gap: 12, padding: '12px 0', marginBottom: 4,
+        display: 'flex', justifyContent: 'space-around', alignItems: 'center',
+        padding: '8px 4px', marginBottom: 2,
+        background: '#fff', borderRadius: 10, border: '1px solid var(--border)',
       }}>
-        <button onClick={() => changeDate(-1)} style={arrowBtnStyle}>←</button>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '1.15rem', fontWeight: 700 }}>{fmtDate(date)}</div>
-          <div style={{ fontSize: '.78rem', color: 'var(--text-secondary)' }}>{date}</div>
-        </div>
-        <button onClick={() => changeDate(1)} style={arrowBtnStyle}>→</button>
-        <button onClick={() => setDate(todayStr())}
-          style={{ ...arrowBtnStyle, fontSize: '.78rem', padding: '6px 12px' }}>
-          今天
-        </button>
+        {weekDays.map(d => (
+          <button
+            key={d.dateStr}
+            onClick={() => setDate(d.dateStr)}
+            style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              padding: '6px 0', borderRadius: 10, border: 'none',
+              cursor: 'pointer', minWidth: 36,
+              background: d.dateStr === date ? 'var(--primary)' : 'transparent',
+              color: d.dateStr === date ? '#fff' : d.isToday ? 'var(--primary)' : 'var(--text-secondary)',
+              fontWeight: d.dateStr === date ? 600 : 400,
+              transition: 'all 0.15s',
+            }}
+          >
+            <span style={{ fontSize: '.68rem' }}>{d.label}</span>
+            <span style={{ fontSize: '.95rem', fontWeight: d.dateStr === date ? 700 : 500 }}>
+              {new Date(d.dateStr + 'T00:00:00').getDate()}
+            </span>
+          </button>
+        ))}
       </div>
 
-      {/* Exercise list */}
-      {loading ? (
-        <div className="loading-spinner"><div className="spin" />加载中...</div>
-      ) : records.length === 0 ? (
-        <div className="empty-state" style={{ padding: 32 }}>
-          <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>💪</div>
-          <p style={{ color: 'var(--text-secondary)' }}>这天还没安排训练</p>
-          <p style={{ fontSize: '.8rem', color: '#94a3b8' }}>点击下方按钮添加动作</p>
+      {/* ═══ 日期标题 + 箭头 ═══ */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        gap: 8, padding: '8px 0', marginBottom: 4,
+      }}>
+        <button onClick={() => changeDate(-1)} style={{
+          ...arrowBtnStyle, fontSize: '.8rem', padding: '4px 10px',
+        }}>‹</button>
+        <div style={{
+          textAlign: 'center', fontSize: '.95rem', fontWeight: 600,
+          minWidth: 120,
+        }}>
+          {fmtDateFull(date)}
         </div>
-      ) : (
-        records.map(r => (
-          <ExerciseCard key={r.id} record={r} onUpdate={handleUpdate} onDelete={handleDelete} />
-        ))
-      )}
+        <button onClick={() => changeDate(1)} style={{
+          ...arrowBtnStyle, fontSize: '.8rem', padding: '4px 10px',
+        }}>›</button>
+      </div>
 
-      {/* ─── 当日照片 ─── */}
-      {!loading && (
-        <div style={{ marginTop: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <span style={{ fontSize: '.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-              📸 训练照片 {photos.length > 0 && `(${photos.length})`}
-            </span>
-            <button className="btn btn-sm btn-secondary" onClick={() => fileRef.current?.click()} disabled={uploading}>
-              {uploading ? '上传中...' : '📷 拍照/相册'}
-            </button>
+      {/* ═══ 可滑动内容区 ═══ */}
+      <div
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        style={{
+          transform: isSwiping ? `translateX(${swipeOffset}px)` : 'translateX(0)',
+          transition: isSwiping ? 'none' : 'transform 0.2s ease',
+          touchAction: 'pan-y',
+        }}
+      >
+        {/* Exercise list */}
+        {loading ? (
+          <div className="loading-spinner"><div className="spin" />加载中...</div>
+        ) : records.length === 0 ? (
+          <div className="empty-state" style={{ padding: 32 }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>💪</div>
+            <p style={{ color: 'var(--text-secondary)' }}>这天还没安排训练</p>
+            <p style={{ fontSize: '.8rem', color: '#94a3b8' }}>点击 ＋ 添加动作</p>
           </div>
-          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleUpload} />
+        ) : (
+          records.map(r => (
+            <ExerciseCard key={r.id} record={r} onUpdate={handleUpdate} onDelete={handleDelete} />
+          ))
+        )}
 
-          {photos.length > 0 ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-              {photos.map(p => (
-                <div key={p.id} onClick={() => setViewing(p)} style={{
-                  aspectRatio: '1', borderRadius: 8, overflow: 'hidden', cursor: 'pointer',
-                  border: '1px solid var(--border)',
-                }}>
-                  <img src={`/${p.file_path}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                </div>
-              ))}
+        {/* ─── 当日照片 ─── */}
+        {!loading && (
+          <div style={{ marginTop: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ fontSize: '.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                📸 训练照片 {photos.length > 0 && `(${photos.length})`}
+              </span>
+              <button className="btn btn-sm btn-secondary" onClick={() => fileRef.current?.click()} disabled={uploading}>
+                {uploading ? '上传中...' : '📷 拍照/相册'}
+              </button>
             </div>
-          ) : (
-            <div style={{
-              textAlign: 'center', padding: '20px 0', color: '#94a3b8', fontSize: '.8rem',
-              border: '1px dashed var(--border)', borderRadius: 8,
-            }}>
-              训练完可以拍照记录体态变化
-            </div>
-          )}
-        </div>
-      )}
+            <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleUpload} />
 
-      {/* ─── 照片大图查看 ─── */}
+            {photos.length > 0 ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                {photos.map(p => (
+                  <div key={p.id} onClick={() => setViewing(p)} style={{
+                    aspectRatio: '1', borderRadius: 8, overflow: 'hidden', cursor: 'pointer',
+                    border: '1px solid var(--border)',
+                  }}>
+                    <img src={`/${p.file_path}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{
+                textAlign: 'center', padding: '20px 0', color: '#94a3b8', fontSize: '.8rem',
+                border: '1px dashed var(--border)', borderRadius: 8,
+              }}>
+                训练完可以拍照记录体态变化
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ═══ 照片大图查看 ═══ */}
       {viewing && (
         <div className="modal-overlay" onClick={() => setViewing(null)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400, padding: 16 }}>
@@ -214,7 +318,7 @@ export default function TodayWorkout() {
         </div>
       )}
 
-      {/* Add button */}
+      {/* ═══ Add button ═══ */}
       <button onClick={openForm} style={{
         position: 'fixed', bottom: 80, right: 20,
         width: 52, height: 52, borderRadius: '50%',
@@ -225,7 +329,7 @@ export default function TodayWorkout() {
         WebkitTapHighlightColor: 'transparent',
       }}>＋</button>
 
-      {/* Add form modal */}
+      {/* ═══ Add form modal ═══ */}
       {showForm && (
         <div className="modal-overlay" onClick={() => setShowForm(false)}>
           <form className="modal" onClick={e => e.stopPropagation()} onSubmit={submit}
@@ -294,7 +398,7 @@ export default function TodayWorkout() {
         </div>
       )}
 
-      {/* Edit exercises modal */}
+      {/* ═══ Edit exercises modal ═══ */}
       {editingExercises && (
         <div className="modal-overlay" onClick={() => setEditingExercises(false)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 360, padding: 20 }}>
