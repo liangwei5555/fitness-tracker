@@ -1,5 +1,5 @@
 import { useEffect, useState, Component } from 'react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip, Cell } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip, LabelList } from 'recharts'
 import { workoutApi, type WorkoutRecord } from '../api'
 
 function todayStr() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
@@ -8,7 +8,7 @@ function weekMonday(s: string) { const [y, m, d] = s.split('-').map(Number); con
 function monthStart(s: string) { return s.slice(0, 7) + '-01' }
 function monthEnd(s: string) { const [y, m] = s.split('-').map(Number); return `${y}-${String(m).padStart(2, '0')}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}` }
 
-const COLORS = ['#4f46e5', '#22c55e', '#eab308', '#ef4444', '#3b82f6', '#a855f7', '#ec4899', '#14b8a6', '#f97316', '#6366f1']
+const WD = ['日', '一', '二', '三', '四', '五', '六']
 
 // 错误边界：防止 Recharts 崩溃导致整个页面白屏
 class ChartErrorBoundary extends Component<{ fallback: React.ReactNode; children: React.ReactNode }> {
@@ -20,6 +20,8 @@ class ChartErrorBoundary extends Component<{ fallback: React.ReactNode; children
   }
 }
 
+const EX_COLORS = ['#4f46e5', '#22c55e', '#eab308', '#ef4444', '#3b82f6', '#a855f7', '#ec4899', '#14b8a6', '#f97316', '#6366f1']
+
 export default function Stats() {
   const [records, setRecords] = useState<WorkoutRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -28,7 +30,6 @@ export default function Stats() {
 
   useEffect(() => {
     const from = addDays(todayStr(), -90)
-    // 不限制 date_to，确保整周/整月的未来日期记录也能统计
     workoutApi.list({ date_from: from, page_size: '200' })
       .then(r => { setRecords(Array.isArray(r?.data) ? r.data : []) })
       .catch(() => setError(true))
@@ -41,9 +42,14 @@ export default function Stats() {
   const today = todayStr()
   const weekStart = view === 'week' ? weekMonday(today) : monthStart(today)
 
-  const periodRecords = records.filter(r => r.date >= weekStart)
+  // ─── 今日统计 ───
+  const todayRecords = records.filter(r => r.date === today)
+  const todayExercises = todayRecords.length
+  const todaySets = todayRecords.reduce((s, r) => s + (r.completed_sets || r.sets || 0), 0)
+  const todayTarget = todayRecords.reduce((s, r) => s + (r.target_sets || r.sets || 0), 0)
 
-  // 按动作累计（防御：跳过异常数据）
+  // ─── 周期统计 ───
+  const periodRecords = records.filter(r => r.date >= weekStart)
   const byExercise: Record<string, number> = {}
   let totalSets = 0
   const daysSet = new Set<string>()
@@ -52,36 +58,42 @@ export default function Stats() {
     const sets = r.completed_sets || r.sets || 0
     byExercise[r.exercise_name] = (byExercise[r.exercise_name] || 0) + sets
     totalSets += sets
-    daysSet.add(r.date)
+    if (sets > 0) daysSet.add(r.date)
   })
 
   const exerciseData = Object.entries(byExercise)
     .map(([name, sets]) => ({ name, sets }))
     .sort((a, b) => b.sets - a.sets)
+  const maxExerciseSets = exerciseData.length > 0 ? exerciseData[0].sets : 1
 
-  // 每日趋势：覆盖整个周期（本周一到周日 / 本月1号到月末）
+  // ─── 每日趋势 ───
   const periodEnd = view === 'week' ? addDays(weekStart, 6) : monthEnd(weekStart)
-  const dailyData: { label: string; sets: number }[] = []
+  const dailyData: { label: string; sets: number; fullDate: string }[] = []
   let cursor = weekStart
   while (cursor <= periodEnd) {
     const parts = cursor.split('-').map(Number)
-    dailyData.push({ label: `${parts[1]}/${parts[2]}`, sets: 0 })
+    dailyData.push({ label: `${parts[1]}/${parts[2]}`, sets: 0, fullDate: cursor })
     cursor = addDays(cursor, 1)
   }
   periodRecords.forEach(r => {
-    const entry = dailyData.find(e => e.label === `${parseInt(r.date.slice(5, 7))}/${parseInt(r.date.slice(8, 10))}`)
+    const entry = dailyData.find(e => e.fullDate === r.date)
     if (entry) entry.sets += (r.completed_sets || r.sets || 0)
   })
 
-  // 上期对比
+  // ─── 对比 ───
   const prevStart = view === 'week' ? addDays(weekStart, -7) : (() => { const [y, m] = weekStart.split('-').map(Number); const pm = m - 1 === 0 ? 12 : m - 1; const py = m - 1 === 0 ? y - 1 : y; return `${py}-${String(pm).padStart(2, '0')}-01` })()
   const prevSets = records.filter(r => r.date >= prevStart && r.date < weekStart).reduce((s, r) => s + (r.completed_sets || r.sets || 0), 0)
+  const periodDays = daysSet.size
+  const dailyAvg = periodDays > 0 ? Math.round(totalSets / periodDays) : 0
+
+  const fmtDate = (s: string) => { const d = new Date(s.split('-').map(Number)[0], s.split('-').map(Number)[1] - 1, s.split('-').map(Number)[2]); return `${d.getMonth() + 1}月${d.getDate()}日 周${WD[d.getDay()]}` }
 
   const chartFallback = <div style={{ textAlign: 'center', padding: 20, color: 'var(--text-secondary)', fontSize: '.85rem' }}>图表加载失败</div>
 
   return (
     <div style={{ paddingBottom: 20 }}>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+      {/* ─── 切换 ─── */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
         {(['week', 'month'] as const).map(v => (
           <button key={v} onClick={() => setView(v)} className={`btn btn-sm ${view === v ? 'btn-primary' : 'btn-secondary'}`}>
             {v === 'week' ? '本周' : '本月'}
@@ -89,49 +101,82 @@ export default function Stats() {
         ))}
       </div>
 
+      {/* ─── 今日训练 ─── */}
+      <div style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', borderRadius: 12, padding: '16px 18px', marginBottom: 12, color: '#fff' }}>
+        <div style={{ fontSize: '.75rem', opacity: 0.8, marginBottom: 4 }}>📅 {fmtDate(today)}</div>
+        <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: '1.8rem', fontWeight: 700, lineHeight: 1.1 }}>{todayExercises}</div>
+            <div style={{ fontSize: '.72rem', opacity: 0.8 }}>训练动作</div>
+          </div>
+          <div>
+            <div style={{ fontSize: '1.8rem', fontWeight: 700, lineHeight: 1.1 }}>{todaySets}<span style={{ fontSize: '.85rem', fontWeight: 400 }}>/{todayTarget}</span></div>
+            <div style={{ fontSize: '.72rem', opacity: 0.8 }}>已完成/目标 组</div>
+          </div>
+          {todayRecords.length > 0 && (
+            <div style={{ flex: 1, fontSize: '.75rem', opacity: 0.85, lineHeight: 1.4 }}>
+              {todayRecords.map(r => (
+                <div key={r.id}>{r.exercise_name} {r.completed_sets || 0}/{r.target_sets || r.sets || 0}组</div>
+              ))}
+            </div>
+          )}
+        </div>
+        {todayRecords.length === 0 && <div style={{ fontSize: '.78rem', opacity: 0.7, marginTop: 4 }}>今天还没开始训练</div>}
+      </div>
+
       {exerciseData.length === 0 ? (
-        <div className="empty-state" style={{ padding: 40 }}><div style={{ fontSize: '2.2rem' }}>📊</div><p style={{ color: 'var(--text-secondary)' }}>{view === 'week' ? '本周' : '本月'}暂无训练</p></div>
+        <div className="empty-state" style={{ padding: 40 }}><div style={{ fontSize: '2.2rem' }}>📊</div><p style={{ color: 'var(--text-secondary)' }}>{view === 'week' ? '本周' : '本月'}暂无训练记录</p></div>
       ) : (
         <>
-          {/* 概览 */}
-          <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 14 }}>
-            <div className="stat-card" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}><div className="stat-value">{totalSets}</div><div className="stat-label">总组数</div></div>
-            <div className="stat-card" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}><div className="stat-value">{daysSet.size}</div><div className="stat-label">训练天数</div></div>
-            <div className="stat-card" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}><div className="stat-value" style={{ color: totalSets >= prevSets ? 'var(--green)' : 'var(--red)' }}>{prevSets > 0 ? (totalSets >= prevSets ? '+' : '') + (totalSets - prevSets) : '-'}</div><div className="stat-label">较上{view === 'week' ? '周' : '月'}</div></div>
+          {/* ─── 周期概览 ─── */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 14 }}>
+            {[
+              { v: totalSets, l: '总组数', c: 'var(--primary)' },
+              { v: periodDays, l: '训练天', c: 'var(--green)' },
+              { v: dailyAvg, l: '日均组', c: 'var(--blue)' },
+              { v: prevSets > 0 ? (totalSets >= prevSets ? '+' : '') + (totalSets - prevSets) : '-', l: `较上${view === 'week' ? '周' : '月'}`, c: totalSets >= prevSets ? 'var(--green)' : 'var(--red)' },
+            ].map((item, i) => (
+              <div key={i} style={{ background: '#fff', borderRadius: 10, border: '1px solid var(--border)', padding: '10px 8px', textAlign: 'center' }}>
+                <div style={{ fontSize: '1.2rem', fontWeight: 700, color: item.c }}>{item.v}</div>
+                <div style={{ fontSize: '.68rem', color: 'var(--text-secondary)' }}>{item.l}</div>
+              </div>
+            ))}
           </div>
 
-          {/* 动作分布 */}
+          {/* ─── 动作分布（自定义柱状图，数字标在条上）─── */}
           <div className="card" style={{ marginBottom: 12 }}>
             <h2 style={{ fontSize: '.9rem', marginBottom: 10 }}>🏋️ 动作分布</h2>
-            <ChartErrorBoundary fallback={chartFallback}>
-              <div style={{ width: '100%', height: Math.max(200, exerciseData.length * 34) }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={exerciseData} layout="vertical" margin={{ top: 0, right: 20, left: 10, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
-                    <XAxis type="number" tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
-                    <YAxis type="category" dataKey="name" tick={{ fontSize: 12, fill: '#64748b' }} width={70} />
-                    <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }} formatter={(v) => [`${v} 组`, '完成']} />
-                    <Bar dataKey="sets" radius={[0, 4, 4, 0]}>
-                      {exerciseData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+            {exerciseData.map((ex, i) => (
+              <div key={ex.name} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ width: 60, fontSize: '.78rem', fontWeight: 500, textAlign: 'right', flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ex.name}</span>
+                <div style={{ flex: 1, height: 22, background: '#f1f5f9', borderRadius: 4, overflow: 'hidden', position: 'relative' }}>
+                  <div style={{
+                    height: '100%', width: `${Math.max((ex.sets / maxExerciseSets) * 100, ex.sets > 0 ? 8 : 0)}%`,
+                    background: EX_COLORS[i % EX_COLORS.length], borderRadius: 4,
+                    display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 6,
+                    transition: 'width 0.4s ease',
+                  }}>
+                    <span style={{ color: '#fff', fontSize: '.7rem', fontWeight: 600, textShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>{ex.sets}组</span>
+                  </div>
+                </div>
               </div>
-            </ChartErrorBoundary>
+            ))}
           </div>
 
-          {/* 每日趋势 */}
+          {/* ─── 每日趋势 ─── */}
           <div className="card">
             <h2 style={{ fontSize: '.9rem', marginBottom: 10 }}>📈 每日趋势</h2>
             <ChartErrorBoundary fallback={chartFallback}>
               <div style={{ width: '100%', height: 200 }}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dailyData} margin={{ top: 4, right: 4, left: -20, bottom: 4 }}>
+                  <BarChart data={dailyData} margin={{ top: 16, right: 4, left: -20, bottom: 4 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                     <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#64748b' }} interval={view === 'month' ? 2 : 0} />
                     <YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
                     <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }} formatter={(v) => [`${v} 组`, '完成']} />
-                    <Bar dataKey="sets" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="sets" fill="var(--primary)" radius={[4, 4, 0, 0]}>
+                      <LabelList dataKey="sets" position="top" style={{ fontSize: 10, fill: '#64748b', fontWeight: 500 }} />
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>

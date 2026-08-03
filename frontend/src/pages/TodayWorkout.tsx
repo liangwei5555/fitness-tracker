@@ -31,10 +31,10 @@ export default function TodayWorkout() {
   const [newEx, setNewEx] = useState('')
 
   interface ExCfg { name: string; sets: number; reps: number; wt: number | null }
+  interface DayPlan { date: string; label: string; exercises: { name: string; sets: number; reps: number; wt: number | null }[] }
   const [recentCfg, setRecentCfg] = useState<ExCfg[]>([])
-  const [lastDate, setLastDate] = useState<string | null>(null)
-  const [lastRecs, setLastRecs] = useState<WorkoutRecord[]>([])
-  const [copying, setCopying] = useState(false)
+  const [recentDays, setRecentDays] = useState<DayPlan[]>([])
+  const [copying, setCopying] = useState<string | null>(null)  // 正在复制的日期
   const submitting = useRef(false)
 
   const [weekBase, setWeekBase] = useState(weekMon(today))
@@ -77,12 +77,13 @@ export default function TodayWorkout() {
   }
   const loadHist = () => {
     const from = addDays(todayStr(), -90)
-    // 不限制 date_to，确保未来日期的记录也能出现在历史中
     workoutApi.list({ date_from: from, page_size: '200' }).then(r => {
       try {
         const recs = Array.isArray(r?.data) ? r.data : []
         if (recs.length === 0) { console.log('loadHist: 暂无历史记录'); return }
         console.log('loadHist: 获取到', recs.length, '条历史记录')
+
+        // ── 快捷填入：去重后的动作配置 ──
         const seen = new Set<string>(); const cfgs: ExCfg[] = []
         for (const rec of recs) {
           if (!rec?.exercise_name) continue
@@ -90,9 +91,26 @@ export default function TodayWorkout() {
           if (!seen.has(k)) { seen.add(k); cfgs.push({ name: rec.exercise_name, sets: rec.target_sets || rec.sets || 0, reps: rec.reps || 0, wt: rec.weight_kg }) }
         }
         setRecentCfg(cfgs.slice(0, 20))
-        const dates = [...new Set(recs.map((r2: WorkoutRecord) => r2.date).filter(Boolean))].sort().reverse()
-        const ld = dates.length > 0 ? dates[0] : null
-        if (ld) { setLastDate(ld); setLastRecs(recs.filter((r2: WorkoutRecord) => r2.date === ld)) }
+
+        // ── 多天历史：按日期分组，显示最近5个有记录的日子 ──
+        const byDate = new Map<string, WorkoutRecord[]>()
+        for (const rec of recs) {
+          if (!rec?.exercise_name) continue
+          if (!byDate.has(rec.date)) byDate.set(rec.date, [])
+          byDate.get(rec.date)!.push(rec)
+        }
+        const sortedDates = [...byDate.keys()].sort().reverse().slice(0, 5)
+        const plans: DayPlan[] = sortedDates.map(ds => ({
+          date: ds,
+          label: fmtDate(ds),
+          exercises: (byDate.get(ds) || []).map(r2 => ({
+            name: r2.exercise_name,
+            sets: r2.target_sets || r2.sets || 0,
+            reps: r2.reps || 0,
+            wt: r2.weight_kg ?? null,
+          }))
+        }))
+        setRecentDays(plans)
       } catch (e) { console.error('loadHist error:', e) }
     }).catch((e) => { console.error('loadHist fetch error:', e) })
   }
@@ -121,9 +139,15 @@ export default function TodayWorkout() {
     finally { setUploading(false); if (fileRef.current) fileRef.current.value = '' }
   }
   const delPhoto = async (id: number) => { if (!window.confirm('删除？')) return; try { await photoApi.delete(id); load(); setViewing(null) } catch {} }
-  const copyDay = async () => {
-    if (!lastRecs.length) return; setCopying(true)
-    try { for (const rec of lastRecs) { await workoutApi.create({ date, exercise_name: rec.exercise_name, target_sets: rec.target_sets || rec.sets || 0, reps: rec.reps || 0, weight_kg: rec.weight_kg }) }; load() } catch {} finally { setCopying(false) }
+  const copyDay = async (plan: DayPlan) => {
+    if (!plan.exercises.length) return
+    setCopying(plan.date)
+    try {
+      for (const ex of plan.exercises) {
+        await workoutApi.create({ date, exercise_name: ex.name, target_sets: ex.sets, reps: ex.reps, weight_kg: ex.wt })
+      }
+      load(); loadHist()
+    } catch {} finally { setCopying(null) }
   }
   const addEx = () => { const n = newEx.trim(); if (!n || myEx.includes(n)) return; const u = [...myEx, n]; setMyEx(u); saveMyEx(u); setNewEx('') }
   const rmEx = (n: string) => { const u = myEx.filter(e => e !== n); setMyEx(u); saveMyEx(u) }
@@ -163,13 +187,47 @@ export default function TodayWorkout() {
       <div style={{ minHeight: 200 }}>
         {loading ? <div className="loading-spinner"><div className="spin" />加载中...</div>
           : records.length === 0 ? (
-            <div className="empty-state" style={{ padding: 28 }}>
-              <div style={{ fontSize: '2.2rem', marginBottom: 6 }}>💪</div>
-              <p style={{ color: 'var(--text-secondary)', marginBottom: 12 }}>这天还没安排训练</p>
-              {lastDate && lastRecs.length > 0 && (
-                <button className="btn btn-sm btn-secondary" onClick={copyDay} disabled={copying} style={{ fontSize: '.78rem' }}>
-                  {copying ? '复制中...' : `📋 复用 ${lastDate} 的计划`}
-                </button>
+            <div style={{ padding: '16px 0' }}>
+              <div style={{ textAlign: 'center', marginBottom: 14 }}>
+                <div style={{ fontSize: '2.2rem', marginBottom: 6 }}>💪</div>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '.85rem' }}>这天还没安排训练</p>
+              </div>
+              {recentDays.length > 0 && (
+                <div>
+                  <p style={{ fontSize: '.75rem', color: '#94a3b8', marginBottom: 8, textAlign: 'center' }}>📋 复用之前的训练计划</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {recentDays.map(plan => (
+                      <button
+                        key={plan.date}
+                        onClick={() => copyDay(plan)}
+                        disabled={copying === plan.date}
+                        style={{
+                          background: '#fff', border: '1px solid var(--border)', borderRadius: 10,
+                          padding: '10px 14px', textAlign: 'left', cursor: 'pointer', width: '100%',
+                          opacity: copying && copying !== plan.date ? 0.5 : 1,
+                        }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <span style={{ fontSize: '.82rem', fontWeight: 600 }}>
+                            {plan.date === todayStr() ? '🟢 ' : ''}{plan.label}
+                          </span>
+                          <span style={{ fontSize: '.7rem', color: 'var(--primary)', fontWeight: 500 }}>
+                            {copying === plan.date ? '复制中...' : '复用 →'}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                          {plan.exercises.map((ex, i) => (
+                            <span key={i} style={{
+                              padding: '2px 8px', borderRadius: 12, background: '#f1f5f9',
+                              fontSize: '.7rem', color: '#64748b', whiteSpace: 'nowrap',
+                            }}>
+                              {ex.name}{ex.sets > 0 ? ` ${ex.sets}组` : ''}{ex.reps > 0 ? `×${ex.reps}` : ''}
+                            </span>
+                          ))}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           ) : records.map(r => <ExerciseCard key={r.id} record={r} onUpdate={handleUpdate} onDelete={handleDelete} />)}

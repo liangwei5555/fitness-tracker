@@ -59,8 +59,7 @@ export default function ExerciseCard({ record, onUpdate, onDelete }: Props) {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <button
-              onTouchStart={e => { e.preventDefault(); minus() }}
-              onMouseDown={e => { e.preventDefault(); minus() }}
+              onClick={e => { e.preventDefault(); minus() }}
               disabled={completed <= 0}
               style={btnStyle(completed <= 0)}>−</button>
             <div style={{ flex: 1, textAlign: 'center' }}>
@@ -68,8 +67,7 @@ export default function ExerciseCard({ record, onUpdate, onDelete }: Props) {
               <span style={{ fontSize: '.85rem', color: 'var(--text-secondary)' }}> / {target} 组</span>
             </div>
             <button
-              onTouchStart={e => { e.preventDefault(); plus() }}
-              onMouseDown={e => { e.preventDefault(); plus() }}
+              onClick={e => { e.preventDefault(); plus() }}
               disabled={completed >= target}
               style={btnStyle(completed >= target)}>＋</button>
           </div>
@@ -79,8 +77,7 @@ export default function ExerciseCard({ record, onUpdate, onDelete }: Props) {
             </div>
             {!isDone && (
               <button
-                onTouchStart={e => { e.preventDefault(); completeAll() }}
-                onMouseDown={e => { e.preventDefault(); completeAll() }}
+                onClick={e => { e.preventDefault(); completeAll() }}
                 style={{ ...btnCompleteStyle, touchAction: 'manipulation', userSelect: 'none' }}>
                 ✓完成
               </button>
