@@ -1,5 +1,4 @@
-import { useEffect, useState, Component } from 'react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LabelList } from 'recharts'
+import { useEffect, useState } from 'react'
 import { workoutApi, type WorkoutRecord } from '../api'
 
 const BASE = '/api'
@@ -13,16 +12,6 @@ function monthStart(s: string) { return s.slice(0, 7) + '-01' }
 function monthEnd(s: string) { const [y, m] = s.split('-').map(Number); return `${y}-${String(m).padStart(2, '0')}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}` }
 
 const WD = ['日', '一', '二', '三', '四', '五', '六']
-
-// 错误边界：防止 Recharts 崩溃导致整个页面白屏
-class ChartErrorBoundary extends Component<{ fallback: React.ReactNode; children: React.ReactNode }> {
-  state = { hasError: false }
-  static getDerivedStateFromError() { return { hasError: true } }
-  render() {
-    if (this.state.hasError) return this.props.fallback
-    return this.props.children
-  }
-}
 
 const EX_COLORS = ['#4f46e5', '#22c55e', '#eab308', '#ef4444', '#3b82f6', '#a855f7', '#ec4899', '#14b8a6', '#f97316', '#6366f1']
 
@@ -98,7 +87,7 @@ export default function Stats() {
 
   const fmtDate = (s: string) => { const d = new Date(s.split('-').map(Number)[0], s.split('-').map(Number)[1] - 1, s.split('-').map(Number)[2]); return `${d.getMonth() + 1}月${d.getDate()}日 周${WD[d.getDay()]}` }
 
-  const chartFallback = <div style={{ textAlign: 'center', padding: 20, color: 'var(--text-secondary)', fontSize: '.85rem' }}>图表加载失败</div>
+  const maxDailySets = Math.max(...dailyData.map(d => d.sets), 1)
 
   return (
     <div style={{ paddingBottom: 20 }}>
@@ -179,20 +168,30 @@ export default function Stats() {
             ))}
           </div>
 
-          {/* ─── 每日趋势 ─── */}
+          {/* ─── 每日趋势（纯CSS柱状图，无抖动）─── */}
           <div className="card">
             <h2 style={{ fontSize: '.9rem', marginBottom: 10 }}>📈 每日趋势</h2>
-            <ChartErrorBoundary fallback={chartFallback}>
-              <BarChart width={340} height={200} data={dailyData} margin={{ top: 16, right: 4, left: -20, bottom: 4 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#64748b' }} interval={view === 'month' ? 2 : 0} />
-                  <YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
-                  <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }} formatter={(v) => [`${v} 组`, '完成']} />
-                  <Bar dataKey="sets" fill="var(--primary)" radius={[4, 4, 0, 0]}>
-                    <LabelList dataKey="sets" position="top" style={{ fontSize: 10, fill: '#64748b', fontWeight: 500 }} />
-                  </Bar>
-                </BarChart>
-            </ChartErrorBoundary>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: view === 'month' ? 2 : 4, height: 160, paddingTop: 20 }}>
+              {dailyData.map((d, i) => {
+                const barH = d.sets > 0 ? Math.max((d.sets / maxDailySets) * 130, 16) : 2
+                const isToday = d.fullDate === today
+                return (
+                  <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 0 }}>
+                    <span style={{ fontSize: '.6rem', fontWeight: d.sets > 0 ? 600 : 400, color: d.sets > 0 ? 'var(--primary)' : '#c0c8d4', marginBottom: 3, whiteSpace: 'nowrap' }}>
+                      {d.sets > 0 ? d.sets : ''}
+                    </span>
+                    <div style={{
+                      width: '100%', maxWidth: 28, height: barH, borderRadius: '4px 4px 0 0',
+                      background: isToday ? 'var(--primary)' : d.sets > 0 ? '#818cf8' : '#e2e8f0',
+                      transition: 'height 0.3s ease',
+                    }} />
+                    <span style={{ fontSize: '.6rem', color: isToday ? 'var(--primary)' : '#94a3b8', marginTop: 4, fontWeight: isToday ? 700 : 400, whiteSpace: 'nowrap' }}>
+                      {d.label}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
           </div>
         </>
       )}
