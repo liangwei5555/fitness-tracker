@@ -1,5 +1,5 @@
-import { useEffect, useState, Component } from 'react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip, LabelList } from 'recharts'
+import { useEffect, useState, Component, useRef } from 'react'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LabelList } from 'recharts'
 import { workoutApi, type WorkoutRecord } from '../api'
 
 const BASE = '/api'
@@ -32,6 +32,19 @@ export default function Stats() {
   const [error, setError] = useState(false)
   const [view, setView] = useState<'week' | 'month'>('week')
   const [sessions, setSessions] = useState<{ date: string; duration_seconds: number }[]>([])
+  const [chartWidth, setChartWidth] = useState(350)
+  const chartRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = chartRef.current
+    if (!el) return
+    const ro = new ResizeObserver(entries => {
+      const w = entries[0]?.contentRect.width
+      if (w) setChartWidth(w)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [view])
 
   useEffect(() => {
     const from = addDays(todayStr(), -90)
@@ -183,18 +196,16 @@ export default function Stats() {
           <div className="card">
             <h2 style={{ fontSize: '.9rem', marginBottom: 10 }}>📈 每日趋势</h2>
             <ChartErrorBoundary fallback={chartFallback}>
-              <div style={{ width: '100%', height: 200, overflow: 'hidden' }}>
-                <ResponsiveContainer width="99%" height={200} debounce={1}>
-                  <BarChart data={dailyData} margin={{ top: 16, right: 4, left: -20, bottom: 4 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#64748b' }} interval={view === 'month' ? 2 : 0} />
-                    <YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
-                    <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }} formatter={(v) => [`${v} 组`, '完成']} />
-                    <Bar dataKey="sets" fill="var(--primary)" radius={[4, 4, 0, 0]}>
-                      <LabelList dataKey="sets" position="top" style={{ fontSize: 10, fill: '#64748b', fontWeight: 500 }} />
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+              <div ref={chartRef} style={{ width: '100%', height: 200, overflow: 'hidden' }}>
+                <BarChart width={chartWidth} height={200} data={dailyData} margin={{ top: 16, right: 4, left: -20, bottom: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#64748b' }} interval={view === 'month' ? 2 : 0} />
+                  <YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
+                  <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }} formatter={(v) => [`${v} 组`, '完成']} />
+                  <Bar dataKey="sets" fill="var(--primary)" radius={[4, 4, 0, 0]}>
+                    <LabelList dataKey="sets" position="top" style={{ fontSize: 10, fill: '#64748b', fontWeight: 500 }} />
+                  </Bar>
+                </BarChart>
               </div>
             </ChartErrorBoundary>
           </div>
