@@ -214,21 +214,18 @@ export default function Stats() {
           {/* ─── 周/月：每日趋势 ─── */}
           {view !== 'today' && (<>
             <div className="card" style={{ marginBottom: 12 }}>
-              <h2 style={{ fontSize: '.9rem', marginBottom: 10 }}>📈 每日组数</h2>
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: isMonth ? 0 : 4, height: isMonth ? 150 : 130, paddingTop: 18 }}>
+              <h2 style={{ fontSize: '.9rem', marginBottom: 2 }}>📈 每日组数 · 共{totalSets}组 · 练了{periodDays}天</h2>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: isMonth ? 0 : 3, height: 120, paddingTop: 16 }}>
                 {dailyData.map((d, i) => {
-                  const barH = d.sets > 0 ? Math.max((d.sets / maxDailySets) * (isMonth ? 110 : 100), 12) : 2
+                  const barH = d.sets > 0 ? Math.max((d.sets / maxDailySets) * 92, 10) : 2
                   const isToday = d.fullDate === today
                   return (
                     <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 0 }}>
-                      {!isMonth && <span style={{ fontSize: '.55rem', fontWeight: d.sets > 0 ? 600 : 400, color: d.sets > 0 ? 'var(--primary)' : '#c0c8d4', marginBottom: 3, whiteSpace: 'nowrap' }}>{d.sets > 0 ? d.sets : ''}</span>}
-                      <div style={{ width: '100%', maxWidth: isMonth ? 10 : 24, height: barH, borderRadius: '3px 3px 0 0', background: isToday ? 'var(--primary)' : d.sets > 0 ? '#a5b4fc' : '#e2e8f0', transition: 'height 0.3s ease' }} />
-                      <span style={{
-                        fontSize: isMonth ? '.4rem' : '.5rem', color: isToday ? 'var(--primary)' : '#94a3b8', marginTop: 4,
-                        fontWeight: isToday ? 700 : 400, whiteSpace: 'nowrap',
-                        writingMode: isMonth ? 'vertical-rl' : 'horizontal-tb' as any,
-                        lineHeight: isMonth ? 1 : 'normal',
-                      }}>
+                      <span style={{ fontSize: isMonth ? '.45rem' : '.58rem', fontWeight: d.sets > 0 ? 600 : 400, color: d.sets > 0 ? 'var(--primary)' : '#c0c8d4', marginBottom: 3, whiteSpace: 'nowrap' }}>
+                        {d.sets > 0 ? d.sets : ''}
+                      </span>
+                      <div style={{ width: '100%', maxWidth: isMonth ? 9 : 22, height: barH, borderRadius: '3px 3px 0 0', background: isToday ? 'var(--primary)' : d.sets > 0 ? '#a5b4fc' : '#e2e8f0' }} />
+                      <span style={{ fontSize: isMonth ? '.4rem' : '.48rem', color: isToday ? 'var(--primary)' : '#94a3b8', marginTop: 4, fontWeight: isToday ? 700 : 400, whiteSpace: 'nowrap', writingMode: isMonth ? 'vertical-rl' as any : 'horizontal-tb' }}>
                         {d.label}
                       </span>
                     </div>
@@ -238,21 +235,18 @@ export default function Stats() {
             </div>
 
             <div className="card">
-              <h2 style={{ fontSize: '.9rem', marginBottom: 10 }}>⏱️ 每日时长（分钟）</h2>
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: isMonth ? 0 : 4, height: isMonth ? 150 : 130, paddingTop: 18 }}>
+              <h2 style={{ fontSize: '.9rem', marginBottom: 2 }}>⏱️ 每日时长 · 共{(() => { const d = fmtDur(periodDuration); return <>{d.num}<span style={{ fontSize: '.6rem' }}>{d.unit}</span></> })()}</h2>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: isMonth ? 0 : 3, height: 120, paddingTop: 16 }}>
                 {dailyData.map((d, i) => {
-                  const barH = d.duration > 0 ? Math.max((d.duration / maxDailyDur) * (isMonth ? 110 : 100), 12) : 2
+                  const barH = d.duration > 0 ? Math.max((d.duration / maxDailyDur) * 92, 10) : 2
                   const isToday = d.fullDate === today
                   return (
                     <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 0 }}>
-                      {!isMonth && <span style={{ fontSize: '.55rem', fontWeight: d.duration > 0 ? 600 : 400, color: d.duration > 0 ? 'var(--green)' : '#c0c8d4', marginBottom: 3, whiteSpace: 'nowrap' }}>{d.duration > 0 ? d.duration : ''}</span>}
-                      <div style={{ width: '100%', maxWidth: isMonth ? 10 : 24, height: barH, borderRadius: '3px 3px 0 0', background: isToday ? 'var(--green)' : d.duration > 0 ? '#86efac' : '#e2e8f0', transition: 'height 0.3s ease' }} />
-                      <span style={{
-                        fontSize: isMonth ? '.4rem' : '.5rem', color: isToday ? 'var(--green)' : '#94a3b8', marginTop: 4,
-                        fontWeight: isToday ? 700 : 400, whiteSpace: 'nowrap',
-                        writingMode: isMonth ? 'vertical-rl' as any : 'horizontal-tb',
-                        lineHeight: isMonth ? 1 : 'normal',
-                      }}>
+                      <span style={{ fontSize: isMonth ? '.45rem' : '.58rem', fontWeight: d.duration > 0 ? 600 : 400, color: d.duration > 0 ? 'var(--green)' : '#c0c8d4', marginBottom: 3, whiteSpace: 'nowrap' }}>
+                        {d.duration > 0 ? d.duration : ''}
+                      </span>
+                      <div style={{ width: '100%', maxWidth: isMonth ? 9 : 22, height: barH, borderRadius: '3px 3px 0 0', background: isToday ? 'var(--green)' : d.duration > 0 ? '#86efac' : '#e2e8f0' }} />
+                      <span style={{ fontSize: isMonth ? '.4rem' : '.48rem', color: isToday ? 'var(--green)' : '#94a3b8', marginTop: 4, fontWeight: isToday ? 700 : 400, whiteSpace: 'nowrap', writingMode: isMonth ? 'vertical-rl' as any : 'horizontal-tb' }}>
                         {d.label}
                       </span>
                     </div>
