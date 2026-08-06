@@ -1,10 +1,24 @@
 const BASE = '/api'
 
+function getToken(): string | null {
+  return localStorage.getItem('fitness_token')
+}
+
+function authHeaders(): Record<string, string> {
+  const token = getToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
 async function request<T=unknown>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(BASE + url, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    headers: { 'Content-Type': 'application/json', ...authHeaders(), ...options?.headers },
     ...options,
   })
+  if (res.status === 401) {
+    localStorage.removeItem('fitness_token')
+    window.location.reload()
+    throw new Error('登录已过期')
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(err.detail || `HTTP ${res.status}`)
@@ -37,7 +51,14 @@ export const photoApi = {
     form.append('file', file)
     form.append('date_str', date)
     form.append('view_type', '正面')
-    const res = await fetch(BASE + '/photos/upload', { method: 'POST', body: form })
+    const res = await fetch(BASE + '/photos/upload', {
+      method: 'POST', body: form, headers: { ...authHeaders() },
+    })
+    if (res.status === 401) {
+      localStorage.removeItem('fitness_token')
+      window.location.reload()
+      throw new Error('登录已过期')
+    }
     if (!res.ok) throw new Error('上传失败')
     return res.json()
   },

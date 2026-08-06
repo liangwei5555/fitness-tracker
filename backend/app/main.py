@@ -4,12 +4,13 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.database import init_db
-from app.routers import workouts, photos, goals, dashboard, notes
+from app.auth import get_current_user
+from app.routers import workouts, photos, goals, dashboard, notes, auth
 
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROJECT_DIR = os.path.dirname(BACKEND_DIR)
@@ -36,12 +37,13 @@ app.add_middleware(
 os.makedirs(PHOTOS_DIR, exist_ok=True)
 app.mount("/photos", StaticFiles(directory=PHOTOS_DIR), name="photos")
 
-# 注册路由
-app.include_router(workouts.router)
-app.include_router(photos.router)
-app.include_router(goals.router)
-app.include_router(dashboard.router)
-app.include_router(notes.router)
+# 注册路由（auth 不需要登录保护，其余需要）
+app.include_router(auth.router)
+app.include_router(workouts.router, dependencies=[Depends(get_current_user)])
+app.include_router(photos.router, dependencies=[Depends(get_current_user)])
+app.include_router(goals.router, dependencies=[Depends(get_current_user)])
+app.include_router(dashboard.router, dependencies=[Depends(get_current_user)])
+app.include_router(notes.router, dependencies=[Depends(get_current_user)])
 
 
 @app.on_event("startup")
