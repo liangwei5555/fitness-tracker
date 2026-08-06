@@ -127,29 +127,34 @@ export default function Stats() {
 
   return (
     <div style={{ paddingBottom: 20 }}>
-      {/* ─── 导航 + 切换 ─── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
-        <button onClick={goPrev} style={{ border: 'none', background: 'none', fontSize: '1rem', cursor: 'pointer', padding: '4px 6px', color: 'var(--text-secondary)' }}>◀</button>
+      {/* ─── 导航栏 ─── */}
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+        <button onClick={goPrev} style={{ border: 'none', background: 'none', fontSize: '1.1rem', cursor: 'pointer', padding: '6px 8px', color: 'var(--text-secondary)' }}>◀</button>
         <span style={{
-          fontSize: '.85rem', fontWeight: 600, minWidth: 80, textAlign: 'center',
+          fontSize: '.9rem', fontWeight: 600, textAlign: 'center', flex: 1,
           color: cursorDate === today && view === 'today' ? 'var(--primary)' : 'var(--text)',
         }}>
           {view === 'today' ? `${cursorDate.slice(5)}` : view === 'week'
             ? `${weekStart.slice(5)}~${addDays(weekStart, 6).slice(5)}`
             : `${cursorDate.slice(0, 4)}年${parseInt(cursorDate.slice(5, 7))}月`}
+          {cursorDate !== today && (
+            <button onClick={goToday} className="btn btn-secondary btn-sm" style={{ fontSize: '.65rem', padding: '2px 8px', marginLeft: 6, verticalAlign: 'middle' }}>回今天</button>
+          )}
         </span>
-        <button onClick={goNext} style={{ border: 'none', background: 'none', fontSize: '1rem', cursor: 'pointer', padding: '4px 6px', color: 'var(--text-secondary)' }}>▶</button>
-        {cursorDate !== today && (
-          <button onClick={goToday} className="btn btn-secondary btn-sm" style={{ fontSize: '.68rem', padding: '3px 8px', marginLeft: 4 }}>回今天</button>
-        )}
+        <button onClick={goNext} style={{ border: 'none', background: 'none', fontSize: '1.1rem', cursor: 'pointer', padding: '6px 8px', color: 'var(--text-secondary)' }}>▶</button>
+      </div>
+
+      {/* 日期选择 + 视图切换 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
         <input type="date" value={cursorDate} onChange={e => setCursorDate(e.target.value)}
-          style={{ marginLeft: 4, padding: '3px 6px', fontSize: '.7rem', border: '1px solid var(--border)', borderRadius: 6, background: '#fff', fontFamily: 'inherit', width: 100 }} />
-        <div style={{ flex: 1 }} />
-        {(['today', 'week', 'month'] as const).map(v => (
-          <button key={v} onClick={() => switchView(v)} className={`btn btn-sm ${view === v ? 'btn-primary' : 'btn-secondary'}`}>
-            {v === 'today' ? '本日' : v === 'week' ? '本周' : '本月'}
-          </button>
-        ))}
+          style={{ padding: '4px 8px', fontSize: '.72rem', border: '1px solid var(--border)', borderRadius: 6, background: '#fff', fontFamily: 'inherit', flex: 1 }} />
+        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+          {(['today', 'week', 'month'] as const).map(v => (
+            <button key={v} onClick={() => switchView(v)} className={`btn btn-sm ${view === v ? 'btn-primary' : 'btn-secondary'}`} style={{ minWidth: 52 }}>
+              {v === 'today' ? '本日' : v === 'week' ? '本周' : '本月'}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ─── 今日训练（仅本日视图）─── */}
