@@ -40,6 +40,17 @@ def save_session(data: SessionSave, db: Session = Depends(get_db)):
     return {"date": str(s.date), "duration_seconds": s.duration_seconds}
 
 
+@router.delete("/{session_date}")
+def delete_session(session_date: str, db: Session = Depends(get_db)):
+    """删除某天的训练时长"""
+    s = db.query(WorkoutSession).filter(WorkoutSession.date == date.fromisoformat(session_date)).first()
+    if not s:
+        raise HTTPException(404, "该日期无训练时长记录")
+    db.delete(s)
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("/")
 def list_sessions(
     date_from: str | None = None,

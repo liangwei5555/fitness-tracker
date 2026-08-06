@@ -296,6 +296,10 @@ export default function TodayWorkout() {
           {savedSec > 0 && timerState === 'idle' && (
             <div style={{ fontSize: '.8rem', color: 'var(--green)', fontWeight: 500, marginBottom: 4 }}>
               ✅ 今日已练 {fmtDuration(savedSec)}
+              <button onClick={async () => {
+                if (!confirm('删除今日训练时长？')) return
+                try { await fetch(BASE + '/sessions/' + todayStr(), { method: 'DELETE', headers: getHeaders() }); setSavedSec(0) } catch {}
+              }} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '.7rem', marginLeft: 4, padding: 0 }}>✕</button>
             </div>
           )}
           {timerState === 'idle' && (

@@ -110,36 +110,38 @@ export default function Stats() {
         ))}
       </div>
 
-      {/* ─── 今日训练 ─── */}
-      <div style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', borderRadius: 12, padding: '16px 18px', marginBottom: 12, color: '#fff' }}>
-        <div style={{ fontSize: '.75rem', opacity: 0.8, marginBottom: 4 }}>📅 {fmtDate(today)}</div>
-        <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
-          <div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 700, lineHeight: 1.1 }}>{todayExercises}</div>
-            <div style={{ fontSize: '.72rem', opacity: 0.8 }}>训练动作</div>
-          </div>
-          <div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 700, lineHeight: 1.1 }}>{todaySets}<span style={{ fontSize: '.85rem', fontWeight: 400 }}>/{todayTarget}</span></div>
-            <div style={{ fontSize: '.72rem', opacity: 0.8 }}>已完成/目标 组</div>
-          </div>
-          {todayDuration > 0 && (
+      {/* ─── 今日训练（仅本日视图）─── */}
+      {view === 'today' && (
+        <div style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', borderRadius: 12, padding: '16px 18px', marginBottom: 12, color: '#fff' }}>
+          <div style={{ fontSize: '.75rem', opacity: 0.8, marginBottom: 4 }}>📅 {fmtDate(today)}</div>
+          <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
             <div>
-              <div style={{ fontSize: '1.8rem', fontWeight: 700, lineHeight: 1.1 }}>
-                    {(() => { const d = fmtDur(todayDuration); return <>{d.num}<span style={{ fontSize: '.7rem', fontWeight: 400 }}>{d.unit}</span></> })()}
-                  </div>
-              <div style={{ fontSize: '.72rem', opacity: 0.8 }}>训练时长</div>
+              <div style={{ fontSize: '1.8rem', fontWeight: 700, lineHeight: 1.1 }}>{todayExercises}</div>
+              <div style={{ fontSize: '.72rem', opacity: 0.8 }}>训练动作</div>
             </div>
-          )}
-          {todayRecords.length > 0 && (
-            <div style={{ flex: 1, fontSize: '.75rem', opacity: 0.85, lineHeight: 1.4 }}>
-              {todayRecords.map(r => (
-                <div key={r.id} style={{ whiteSpace: 'nowrap' }}>{r.exercise_name} {r.completed_sets || 0}/{r.target_sets || r.sets || 0}组{r.completed_sets > 0 ? ' ✅' : ''}</div>
-              ))}
+            <div>
+              <div style={{ fontSize: '1.8rem', fontWeight: 700, lineHeight: 1.1 }}>{todaySets}<span style={{ fontSize: '.85rem', fontWeight: 400 }}>/{todayTarget}</span></div>
+              <div style={{ fontSize: '.72rem', opacity: 0.8 }}>已完成/目标 组</div>
             </div>
-          )}
+            {todayDuration > 0 && (
+              <div>
+                <div style={{ fontSize: '1.8rem', fontWeight: 700, lineHeight: 1.1 }}>
+                  {(() => { const d = fmtDur(todayDuration); return <>{d.num}<span style={{ fontSize: '.7rem', fontWeight: 400 }}>{d.unit}</span></> })()}
+                </div>
+                <div style={{ fontSize: '.72rem', opacity: 0.8 }}>训练时长</div>
+              </div>
+            )}
+            {todayRecords.length > 0 && (
+              <div style={{ flex: 1, fontSize: '.75rem', opacity: 0.85, lineHeight: 1.4 }}>
+                {todayRecords.map(r => (
+                  <div key={r.id} style={{ whiteSpace: 'nowrap' }}>{r.exercise_name} {r.completed_sets || 0}/{r.target_sets || r.sets || 0}组{r.completed_sets > 0 ? ' ✅' : ''}</div>
+                ))}
+              </div>
+            )}
+          </div>
+          {todayRecords.length === 0 && <div style={{ fontSize: '.78rem', opacity: 0.7, marginTop: 4 }}>今天还没开始训练</div>}
         </div>
-        {todayRecords.length === 0 && <div style={{ fontSize: '.78rem', opacity: 0.7, marginTop: 4 }}>今天还没开始训练</div>}
-      </div>
+      )}
 
       {exerciseData.length === 0 ? (
         <div className="empty-state" style={{ padding: 40 }}><div style={{ fontSize: '2.2rem' }}>📊</div><p style={{ color: 'var(--text-secondary)' }}>{view === 'today' ? '今天' : view === 'week' ? '本周' : '本月'}暂无训练记录</p></div>
