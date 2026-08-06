@@ -59,6 +59,7 @@ export default function Stats() {
     else { const [y, m] = cursorDate.split('-').map(Number); setCursorDate(m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`) }
   }
   const goToday = () => { setCursorDate(today); setView('today') }
+  const switchView = (v: 'today' | 'week' | 'month') => { setView(v); setCursorDate(today) }
 
   // ─── 今日统计（用游标日期）───
   const cursorRecords = records.filter(r => r.date === cursorDate)
@@ -87,7 +88,9 @@ export default function Stats() {
   const maxExerciseSets = exerciseData.length > 0 ? exerciseData[0].sets : 1
 
   // ─── 每日趋势 ───
-  const periodEnd = view === 'today' ? today : view === 'week' ? addDays(weekStart, 6) : monthEnd(weekStart)
+  // 趋势图结束日期不超出今天
+  const _end = view === 'today' ? cursorDate : view === 'week' ? addDays(weekStart, 6) : monthEnd(weekStart)
+  const periodEnd = _end > today ? today : _end
   const dailyData: { label: string; sets: number; duration: number; fullDate: string }[] = []
   let cursor = weekStart
   while (cursor <= periodEnd) {
@@ -125,7 +128,7 @@ export default function Stats() {
   return (
     <div style={{ paddingBottom: 20 }}>
       {/* ─── 导航 + 切换 ─── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
         <button onClick={goPrev} style={{ border: 'none', background: 'none', fontSize: '1rem', cursor: 'pointer', padding: '4px 6px', color: 'var(--text-secondary)' }}>◀</button>
         <span style={{
           fontSize: '.85rem', fontWeight: 600, minWidth: 80, textAlign: 'center',
@@ -139,10 +142,12 @@ export default function Stats() {
         {cursorDate !== today && (
           <button onClick={goToday} className="btn btn-secondary btn-sm" style={{ fontSize: '.68rem', padding: '3px 8px', marginLeft: 4 }}>回今天</button>
         )}
+        <input type="date" value={cursorDate} onChange={e => setCursorDate(e.target.value)}
+          style={{ marginLeft: 4, padding: '3px 6px', fontSize: '.7rem', border: '1px solid var(--border)', borderRadius: 6, background: '#fff', fontFamily: 'inherit', width: 100 }} />
         <div style={{ flex: 1 }} />
         {(['today', 'week', 'month'] as const).map(v => (
-          <button key={v} onClick={() => { setView(v); setCursorDate(v === 'today' ? cursorDate : v === 'week' ? weekMonday(cursorDate) : monthStart(cursorDate)) }} className={`btn btn-sm ${view === v ? 'btn-primary' : 'btn-secondary'}`}>
-            {v === 'today' ? '日' : v === 'week' ? '周' : '月'}
+          <button key={v} onClick={() => switchView(v)} className={`btn btn-sm ${view === v ? 'btn-primary' : 'btn-secondary'}`}>
+            {v === 'today' ? '本日' : v === 'week' ? '本周' : '本月'}
           </button>
         ))}
       </div>
