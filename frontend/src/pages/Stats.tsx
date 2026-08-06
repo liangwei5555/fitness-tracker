@@ -121,7 +121,7 @@ export default function Stats() {
           {todayRecords.length > 0 && (
             <div style={{ flex: 1, fontSize: '.75rem', opacity: 0.85, lineHeight: 1.4 }}>
               {todayRecords.map(r => (
-                <div key={r.id}>{r.exercise_name} {r.completed_sets || 0}/{r.target_sets || r.sets || 0}组 {r.completed_sets > 0 ? '✅' : ''}</div>
+                <div key={r.id} style={{ whiteSpace: 'nowrap' }}>{r.exercise_name} {r.completed_sets || 0}/{r.target_sets || r.sets || 0}组{r.completed_sets > 0 ? ' ✅' : ''}</div>
               ))}
             </div>
           )}
