@@ -3,6 +3,12 @@ import { photoApi, type DailyPhoto } from '../api'
 
 function todayStr() { return new Date().toISOString().slice(0, 10) }
 
+function PhotoImg({ src, alt, style }: { src: string; alt: string; style?: React.CSSProperties }) {
+  const [err, setErr] = useState(false)
+  if (err) return <div style={{ ...style, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9', color: '#94a3b8', fontSize: '.7rem' }}>🖼️</div>
+  return <img src={src} alt={alt} style={style} onError={() => setErr(true)} />
+}
+
 export default function Photos() {
   const [photos, setPhotos] = useState<DailyPhoto[]>([])
   const [loading, setLoading] = useState(true)
@@ -62,7 +68,7 @@ export default function Photos() {
                 <div key={p.id} onClick={() => setViewing(p)} style={{
                   aspectRatio: '1', borderRadius: 8, overflow: 'hidden', cursor: 'pointer',
                 }}>
-                  <img src={`/${p.file_path}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <PhotoImg src={`/${p.file_path}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 </div>
               ))}
             </div>
@@ -73,7 +79,7 @@ export default function Photos() {
       {viewing && (
         <div className="modal-overlay" onClick={() => setViewing(null)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400, padding: 16 }}>
-            <img src={`/${viewing.file_path}`} alt="" style={{ width: '100%', borderRadius: 8, maxHeight: '60vh', objectFit: 'contain' }} />
+            <PhotoImg src={`/${viewing.file_path}`} alt="" style={{ width: '100%', borderRadius: 8, maxHeight: '60vh', objectFit: 'contain' }} />
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, fontSize: '.85rem', color: 'var(--text-secondary)' }}>
               <span>{viewing.date}</span>
               <button className="btn btn-danger btn-sm" onClick={() => handleDelete(viewing.id)}>删除</button>

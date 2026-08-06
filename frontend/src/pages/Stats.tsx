@@ -2,6 +2,10 @@ import { useEffect, useState, Component } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip, LabelList } from 'recharts'
 import { workoutApi, type WorkoutRecord } from '../api'
 
+const BASE = '/api'
+function getHeaders() { const t = localStorage.getItem('fitness_token'); return { 'Content-Type': 'application/json', ...(t ? { Authorization: `Bearer ${t}` } : {}) } }
+function fmtDuration(sec: number): string { const m = Math.floor(sec / 60); if (m < 60) return `${m}分钟`; const h = Math.floor(m / 60); return `${h}小时${m % 60}分钟` }
+
 function todayStr() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 function addDays(s: string, n: number) { const [y, m, d] = s.split('-').map(Number); const dt = new Date(y, m - 1, d); dt.setDate(dt.getDate() + n); return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}` }
 function weekMonday(s: string) { const [y, m, d] = s.split('-').map(Number); const dt = new Date(y, m - 1, d); const dow = dt.getDay() || 7; dt.setDate(dt.getDate() - dow + 1); return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}` }
@@ -27,13 +31,18 @@ export default function Stats() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [view, setView] = useState<'week' | 'month'>('week')
+  const [sessions, setSessions] = useState<{ date: string; duration_seconds: number }[]>([])
 
   useEffect(() => {
     const from = addDays(todayStr(), -90)
-    workoutApi.list({ date_from: from, page_size: '200' })
-      .then(r => { setRecords(Array.isArray(r?.data) ? r.data : []) })
-      .catch(() => setError(true))
-      .finally(() => setLoading(false))
+    Promise.all([
+      workoutApi.list({ date_from: from, page_size: '200' }),
+      fetch(BASE + '/sessions/?date_from=' + from, { headers: getHeaders() }).then(r => r.ok ? r.json() : []),
+    ]).then(([wr, ss]) => {
+      setRecords(Array.isArray(wr?.data) ? wr.data : [])
+      setSessions(Array.isArray(ss) ? ss : [])
+    }).catch(() => setError(true))
+    .finally(() => setLoading(false))
   }, [])
 
   if (loading) return <div className="loading-spinner"><div className="spin" />加载中...</div>
@@ -47,6 +56,8 @@ export default function Stats() {
   const todayExercises = todayRecords.length
   const todaySets = todayRecords.reduce((s, r) => s + (r.completed_sets || r.sets || 0), 0)
   const todayTarget = todayRecords.reduce((s, r) => s + (r.target_sets || r.sets || 0), 0)
+  const todayDuration = sessions.filter(s => s.date === today).reduce((a, s) => a + s.duration_seconds, 0)
+  const periodDuration = sessions.filter(s => s.date >= weekStart).reduce((a, s) => a + s.duration_seconds, 0)
 
   // ─── 周期统计 ───
   const periodRecords = records.filter(r => r.date >= weekStart)
@@ -84,7 +95,6 @@ export default function Stats() {
   const prevStart = view === 'week' ? addDays(weekStart, -7) : (() => { const [y, m] = weekStart.split('-').map(Number); const pm = m - 1 === 0 ? 12 : m - 1; const py = m - 1 === 0 ? y - 1 : y; return `${py}-${String(pm).padStart(2, '0')}-01` })()
   const prevSets = records.filter(r => r.date >= prevStart && r.date < weekStart).reduce((s, r) => s + (r.completed_sets || r.sets || 0), 0)
   const periodDays = daysSet.size
-  const dailyAvg = periodDays > 0 ? Math.round(totalSets / periodDays) : 0
 
   const fmtDate = (s: string) => { const d = new Date(s.split('-').map(Number)[0], s.split('-').map(Number)[1] - 1, s.split('-').map(Number)[2]); return `${d.getMonth() + 1}月${d.getDate()}日 周${WD[d.getDay()]}` }
 
@@ -113,6 +123,12 @@ export default function Stats() {
             <div style={{ fontSize: '1.8rem', fontWeight: 700, lineHeight: 1.1 }}>{todaySets}<span style={{ fontSize: '.85rem', fontWeight: 400 }}>/{todayTarget}</span></div>
             <div style={{ fontSize: '.72rem', opacity: 0.8 }}>已完成/目标 组</div>
           </div>
+          {todayDuration > 0 && (
+            <div>
+              <div style={{ fontSize: '1.8rem', fontWeight: 700, lineHeight: 1.1 }}>{fmtDuration(todayDuration)}</div>
+              <div style={{ fontSize: '.72rem', opacity: 0.8 }}>训练时长</div>
+            </div>
+          )}
           {todayRecords.length > 0 && (
             <div style={{ flex: 1, fontSize: '.75rem', opacity: 0.85, lineHeight: 1.4 }}>
               {todayRecords.map(r => (
@@ -133,7 +149,7 @@ export default function Stats() {
             {[
               { v: totalSets, l: '总组数', c: 'var(--primary)' },
               { v: periodDays, l: '训练天', c: 'var(--green)' },
-              { v: dailyAvg, l: '日均组', c: 'var(--blue)' },
+              { v: periodDuration > 0 ? fmtDuration(periodDuration) : '-', l: '训练时长', c: 'var(--blue)' },
               { v: prevSets > 0 ? (totalSets >= prevSets ? '+' : '') + (totalSets - prevSets) : '-', l: `较上${view === 'week' ? '周' : '月'}`, c: totalSets >= prevSets ? 'var(--green)' : 'var(--red)' },
             ].map((item, i) => (
               <div key={i} style={{ background: '#fff', borderRadius: 10, border: '1px solid var(--border)', padding: '10px 8px', textAlign: 'center' }}>

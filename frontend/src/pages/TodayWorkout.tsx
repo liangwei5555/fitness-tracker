@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { workoutApi, photoApi, type WorkoutRecord, type DailyPhoto } from '../api'
 import ExerciseCard from '../components/ExerciseCard'
 
@@ -10,6 +10,9 @@ function addDays(s: string, n: number): string { const d = parseDate(s); d.setDa
 const WD = ['日', '一', '二', '三', '四', '五', '六']
 function fmtDate(s: string): string { const d = parseDate(s); return `${d.getMonth() + 1}月${d.getDate()}日 周${WD[d.getDay()]}` }
 function weekMon(s: string): string { const d = parseDate(s); const dow = d.getDay() || 7; d.setDate(d.getDate() - dow + 1); return toDateStr(d.getFullYear(), d.getMonth(), d.getDate()) }
+const BASE = '/api'
+function getHeaders() { const t = localStorage.getItem('fitness_token'); return { 'Content-Type': 'application/json', ...(t ? { Authorization: `Bearer ${t}` } : {}) } }
+function fmtDuration(sec: number): string { const m = Math.floor(sec / 60); const s = sec % 60; return `${m}:${String(s).padStart(2, '0')}` }
 
 const DEF_EX = ['卧推', '深蹲', '硬拉', '引体向上', '哑铃飞鸟', '弯举', '推举', '划船', '俯卧撑', '卷腹']
 function loadMyEx(): string[] { try { const r = localStorage.getItem('my_exercises'); if (r) { const a = JSON.parse(r); if (Array.isArray(a) && a.length) return a } } catch {} return [...DEF_EX] }
@@ -38,6 +41,95 @@ export default function TodayWorkout() {
   const submitting = useRef(false)
 
   const [weekBase, setWeekBase] = useState(weekMon(today))
+
+  // ─── 计时器 ───
+  const [timerState, setTimerState] = useState<'idle' | 'running' | 'paused'>('idle')
+  const [elapsedSec, setElapsedSec] = useState(0)
+  const [savedSec, setSavedSec] = useState(0)
+  const timerRef = useRef<number | null>(null)
+  const startRef = useRef(0)
+  const accumRef = useRef(0)
+
+  const clearTimerInterval = () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null } }
+
+  const persistTimer = (running: boolean, paused: boolean, elapsed: number) => {
+    localStorage.setItem('timer_state', JSON.stringify({ running, paused, elapsed }))
+  }
+
+  const startTimer = () => {
+    clearTimerInterval()
+    startRef.current = Date.now()
+    setTimerState('running')
+    persistTimer(true, false, accumRef.current)
+    timerRef.current = window.setInterval(() => {
+      setElapsedSec(accumRef.current + Math.floor((Date.now() - startRef.current) / 1000))
+    }, 200)
+  }
+
+  const pauseTimer = () => {
+    clearTimerInterval()
+    accumRef.current += Math.floor((Date.now() - startRef.current) / 1000)
+    setElapsedSec(accumRef.current)
+    setTimerState('paused')
+    persistTimer(true, true, accumRef.current)
+  }
+
+  const resumeTimer = () => {
+    clearTimerInterval()
+    startRef.current = Date.now()
+    setTimerState('running')
+    persistTimer(true, false, accumRef.current)
+    timerRef.current = window.setInterval(() => {
+      setElapsedSec(accumRef.current + Math.floor((Date.now() - startRef.current) / 1000))
+    }, 200)
+  }
+
+  const stopTimer = useCallback(async () => {
+    clearTimerInterval()
+    const final = accumRef.current + (timerState === 'running' ? Math.floor((Date.now() - startRef.current) / 1000) : 0)
+    setElapsedSec(final)
+    setTimerState('idle')
+    accumRef.current = 0
+    localStorage.removeItem('timer_state')
+    // 保存到后端
+    try {
+      const res = await fetch(BASE + '/sessions/', {
+        method: 'POST', headers: getHeaders(),
+        body: JSON.stringify({ date: todayStr(), duration_seconds: final }),
+      })
+      if (res.ok) {
+        const d = await res.json()
+        setSavedSec(d.duration_seconds)
+      }
+    } catch { /* ignore */ }
+  }, [timerState])
+
+  // 恢复计时器（页面刷新后）
+  useEffect(() => {
+    const saved = localStorage.getItem('timer_state')
+    if (saved) {
+      try {
+        const st = JSON.parse(saved)
+        if (st.running) {
+          accumRef.current = st.elapsed || 0
+          setElapsedSec(st.elapsed || 0)
+          if (!st.paused) {
+            startRef.current = Date.now()
+            setTimerState('running')
+            timerRef.current = window.setInterval(() => {
+              setElapsedSec(accumRef.current + Math.floor((Date.now() - startRef.current) / 1000))
+            }, 200)
+          } else {
+            setTimerState('paused')
+          }
+        }
+      } catch { /* ignore */ }
+    }
+    // 加载今日已保存时长
+    fetch(BASE + '/sessions/' + todayStr(), { headers: getHeaders() })
+      .then(r => r.json()).then(d => setSavedSec(d.duration_seconds || 0)).catch(() => {})
+    return () => clearTimerInterval()
+  }, [])
 
   // ─── 滑动 ───
   const tsX = useRef(0)
@@ -183,6 +275,40 @@ export default function TodayWorkout() {
         {date === today && <span style={{ marginLeft: 6, padding: '2px 10px', borderRadius: 10, background: 'var(--primary)', color: '#fff', fontSize: '.75rem', fontWeight: 600, letterSpacing: '.5px' }}>今天</span>}
       </div>
 
+      {/* ═══ 计时器 ═══ */}
+      {date === today && (
+        <div style={{ textAlign: 'center', padding: '6px 14px 10px' }}>
+          {savedSec > 0 && timerState === 'idle' && (
+            <div style={{ fontSize: '.8rem', color: 'var(--green)', fontWeight: 500, marginBottom: 4 }}>
+              ✅ 今日已练 {fmtDuration(savedSec)}
+            </div>
+          )}
+          {timerState === 'idle' && (
+            <button onClick={startTimer} className="btn btn-primary btn-sm"
+              style={{ fontSize: '.85rem', padding: '8px 28px', borderRadius: 20 }}>
+              ▶ 开始训练
+            </button>
+          )}
+          {timerState !== 'idle' && (
+            <div>
+              <div style={{ fontSize: '2rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums', marginBottom: 6, color: timerState === 'paused' ? '#f59e0b' : 'var(--primary)' }}>
+                {fmtDuration(elapsedSec)}
+              </div>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                {timerState === 'running' ? (
+                  <button onClick={pauseTimer} className="btn btn-secondary btn-sm" style={{ borderRadius: 20, padding: '6px 20px' }}>⏸ 暂停</button>
+                ) : (
+                  <>
+                    <button onClick={resumeTimer} className="btn btn-primary btn-sm" style={{ borderRadius: 20, padding: '6px 20px' }}>▶ 继续</button>
+                    <button onClick={stopTimer} className="btn btn-danger btn-sm" style={{ borderRadius: 20, padding: '6px 20px' }}>⏹ 结束</button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ═══ 内容 ═══ */}
       <div style={{ minHeight: 200 }}>
         {loading ? <div className="loading-spinner"><div className="spin" />加载中...</div>
@@ -246,14 +372,14 @@ export default function TodayWorkout() {
           <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleUpload} />
           {photos.length > 0 ? (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-              {photos.map(p => <div key={p.id} onClick={() => setViewing(p)} style={{ aspectRatio: '1', borderRadius: 8, overflow: 'hidden', cursor: 'pointer', border: '1px solid var(--border)' }}><img src={`/${p.file_path}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></div>)}
+              {photos.map(p => <div key={p.id} onClick={() => setViewing(p)} style={{ aspectRatio: '1', borderRadius: 8, overflow: 'hidden', cursor: 'pointer', border: '1px solid var(--border)' }}><img src={`/${p.file_path}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} /></div>)}
             </div>
           ) : <div style={{ textAlign: 'center', padding: '16px 0', color: '#94a3b8', fontSize: '.75rem', border: '1px dashed var(--border)', borderRadius: 8 }}>训练完拍照记录体态</div>}
         </div>
       )}
 
       {/* 照片大图 */}
-      {viewing && <div className="modal-overlay" onClick={() => setViewing(null)} onTouchStart={e => e.stopPropagation()} onTouchEnd={e => e.stopPropagation()}><div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400, padding: 16 }}><img src={`/${viewing.file_path}`} alt="" style={{ width: '100%', borderRadius: 8, maxHeight: '60vh', objectFit: 'contain' }} /><div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, fontSize: '.8rem', color: 'var(--text-secondary)' }}><span>{viewing.date} · {viewing.view_type}</span><button className="btn btn-danger btn-sm" onClick={() => delPhoto(viewing.id)}>删除</button></div></div></div>}
+      {viewing && <div className="modal-overlay" onClick={() => setViewing(null)} onTouchStart={e => e.stopPropagation()} onTouchEnd={e => e.stopPropagation()}><div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400, padding: 16 }}><img src={`/${viewing.file_path}`} alt="" style={{ width: '100%', borderRadius: 8, maxHeight: '60vh', objectFit: 'contain' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} /><div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, fontSize: '.8rem', color: 'var(--text-secondary)' }}><span>{viewing.date} · {viewing.view_type}</span><button className="btn btn-danger btn-sm" onClick={() => delPhoto(viewing.id)}>删除</button></div></div></div>}
 
       {/* ＋ */}
       <button onClick={() => { setForm({ name: '', sets: '', reps: '', wt: '', pd: date }); setShowForm(true) }} style={{ position: 'fixed', bottom: 80, right: 20, width: 52, height: 52, borderRadius: '50%', background: 'var(--primary)', color: '#fff', border: 'none', fontSize: '1.6rem', cursor: 'pointer', boxShadow: '0 4px 16px rgba(79,70,229,0.4)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>＋</button>
