@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.database import init_db
 from app.auth import get_current_user
-from app.routers import workouts, photos, goals, dashboard, notes, auth, sessions
+from app.routers import workouts, photos, goals, dashboard, notes, auth, sessions, plans
 
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROJECT_DIR = os.path.dirname(BACKEND_DIR)
@@ -45,6 +45,7 @@ app.include_router(goals.router, dependencies=[Depends(get_current_user)])
 app.include_router(dashboard.router, dependencies=[Depends(get_current_user)])
 app.include_router(notes.router, dependencies=[Depends(get_current_user)])
 app.include_router(sessions.router, dependencies=[Depends(get_current_user)])
+app.include_router(plans.router, dependencies=[Depends(get_current_user)])
 
 
 @app.on_event("startup")

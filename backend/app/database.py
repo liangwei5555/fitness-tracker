@@ -45,4 +45,5 @@ def init_db():
     from app.models.goal import ImprovementGoal  # noqa: F401
     from app.models.note import Note  # noqa: F401
     from app.models.session import WorkoutSession  # noqa: F401
+    from app.models.plan import TrainingPlan, PlanExercise  # noqa: F401
     Base.metadata.create_all(bind=engine)

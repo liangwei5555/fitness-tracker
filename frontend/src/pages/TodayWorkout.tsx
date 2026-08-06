@@ -40,8 +40,46 @@ export default function TodayWorkout() {
   const [copying, setCopying] = useState<string | null>(null)  // 正在复制的日期
   const submitting = useRef(false)
 
+  // ─── 训练计划 ───
+  interface Plan { id: number; name: string; exercises: { exercise_name: string; target_sets: number; reps: number; weight_kg: number | null }[] }
+  const [plans, setPlans] = useState<Plan[]>([])
+  const [applyingPlan, setApplyingPlan] = useState<number | null>(null)
+  const [savingPlan, setSavingPlan] = useState(false)
+  const [planName, setPlanName] = useState('')
+  const [showSavePlan, setShowSavePlan] = useState(false)
+  const loadPlans = () => {
+    fetch(BASE + '/plans/', { headers: getHeaders() }).then(r => r.json()).then(d => setPlans(Array.isArray(d) ? d : [])).catch(() => {})
+  }
+  const applyPlan = async (planId: number) => {
+    setApplyingPlan(planId)
+    try {
+      await fetch(BASE + '/plans/' + planId + '/apply', { method: 'POST', headers: getHeaders(), body: JSON.stringify({ date }) })
+      load(); loadHist()
+    } catch {} finally { setApplyingPlan(null) }
+  }
+  const saveAsPlan = async () => {
+    if (!planName.trim()) return
+    setSavingPlan(true)
+    try {
+      await fetch(BASE + '/plans/', {
+        method: 'POST', headers: getHeaders(),
+        body: JSON.stringify({ name: planName.trim(), exercises: records.map(r => ({ exercise_name: r.exercise_name, target_sets: r.target_sets || r.sets, reps: r.reps, weight_kg: r.weight_kg })) }),
+      })
+      setShowSavePlan(false); setPlanName(''); loadPlans()
+    } catch {} finally { setSavingPlan(false) }
+  }
+  const delPlan = async (id: number) => {
+    setDelConfirm({ type: 'plan', planId: id })
+  }
+  const confirmDelPlan = async () => {
+    if (!delConfirm || delConfirm.type !== 'plan') return
+    const id = delConfirm.planId!
+    setDelConfirm(null)
+    try { await fetch(BASE + '/plans/' + id, { method: 'DELETE', headers: getHeaders() }); loadPlans() } catch {}
+  }
+
   const [weekBase, setWeekBase] = useState(weekMon(today))
-  const [delConfirm, setDelConfirm] = useState<{ type: 'duration' } | null>(null)
+  const [delConfirm, setDelConfirm] = useState<{ type: 'duration' } | { type: 'plan'; planId: number } | null>(null)
 
   // ─── 计时器 ───
   const [timerState, setTimerState] = useState<'idle' | 'running' | 'paused'>('idle')
@@ -223,7 +261,7 @@ export default function TodayWorkout() {
     }).catch((e) => { console.error('loadHist fetch error:', e) })
   }
   useEffect(() => { load() }, [date])
-  useEffect(() => { loadHist() }, [])
+  useEffect(() => { loadHist(); loadPlans() }, [])
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -335,6 +373,38 @@ export default function TodayWorkout() {
                 <div style={{ fontSize: '2.2rem', marginBottom: 6 }}>💪</div>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '.85rem' }}>这天还没安排训练</p>
               </div>
+              {/* ─── 训练计划 ─── */}
+              {plans.length > 0 && (
+                <div style={{ marginBottom: 14 }}>
+                  <p style={{ fontSize: '.75rem', color: '#94a3b8', marginBottom: 8, textAlign: 'center' }}>📁 选择训练计划</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {plans.map(p => (
+                      <div key={p.id} style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => applyPlan(p.id)}>
+                            <div style={{ fontSize: '.82rem', fontWeight: 600, marginBottom: 3 }}>📋 {p.name}</div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                              {p.exercises.map((ex, i) => (
+                                <span key={i} style={{ padding: '2px 8px', borderRadius: 12, background: '#f1f5f9', fontSize: '.7rem', color: '#64748b', whiteSpace: 'nowrap' }}>
+                                  {ex.exercise_name}{ex.target_sets > 0 ? ` ${ex.target_sets}组` : ''}{ex.reps > 0 ? `×${ex.reps}` : ''}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 4, marginLeft: 8, flexShrink: 0 }}>
+                            <button onClick={() => applyPlan(p.id)} disabled={applyingPlan === p.id}
+                              className="btn btn-primary btn-sm" style={{ fontSize: '.68rem', padding: '3px 10px' }}>
+                              {applyingPlan === p.id ? '...' : '应用'}
+                            </button>
+                            <button onClick={() => delPlan(p.id)}
+                              style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '.75rem', padding: '2px 4px' }}>✕</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {recentDays.length > 0 && (
                 <div>
                   <p style={{ fontSize: '.75rem', color: '#94a3b8', marginBottom: 8, textAlign: 'center' }}>📋 复用之前的训练计划</p>
@@ -373,8 +443,35 @@ export default function TodayWorkout() {
                 </div>
               )}
             </div>
-          ) : records.map(r => <ExerciseCard key={r.id} record={r} onUpdate={handleUpdate} onDelete={handleDelete} />)}
+          ) : (<>
+            {records.map(r => <ExerciseCard key={r.id} record={r} onUpdate={handleUpdate} onDelete={handleDelete} />)}
+            <div style={{ textAlign: 'center', marginTop: 8 }}>
+              <button className="btn btn-secondary btn-sm" onClick={() => { setPlanName(''); setShowSavePlan(true) }}
+                style={{ fontSize: '.72rem' }}>💾 保存为计划</button>
+            </div>
+          </>)}
       </div>
+
+      {/* 保存计划弹窗 */}
+      {showSavePlan && (
+        <div className="modal-overlay" onClick={() => setShowSavePlan(false)} style={{ alignItems: 'center' }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 320, padding: 20, borderRadius: 14, margin: '0 16px' }}>
+            <h2 style={{ fontSize: '1rem', marginBottom: 12 }}>保存为训练计划</h2>
+            <input className="form-input" value={planName} onChange={e => setPlanName(e.target.value)}
+              placeholder="计划名称，如：推日、拉日、腿日" autoFocus
+              onKeyDown={e => { if (e.key === 'Enter') saveAsPlan() }} />
+            <div style={{ fontSize: '.75rem', color: 'var(--text-secondary)', marginTop: 6 }}>
+              将当前 {records.length} 个动作保存为模板
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowSavePlan(false)}>取消</button>
+              <button className="btn btn-primary btn-sm" onClick={saveAsPlan} disabled={savingPlan || !planName.trim()}>
+                {savingPlan ? '保存中...' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 触底占位：保证空白区域可触摸滑动 */}
       <div style={{ height: 80, minHeight: 'calc(100dvh - 380px)' }} />
@@ -427,18 +524,26 @@ export default function TodayWorkout() {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>{myEx.map(ex => <span key={ex} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px 4px 12px', borderRadius: 16, background: '#f1f5f9', fontSize: '.8rem' }}>{ex}<button type="button" onClick={() => rmEx(ex)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '1rem', padding: '0 2px', lineHeight: 1 }}>×</button></span>)}</div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}><button type="button" className="btn btn-sm btn-secondary" onClick={() => { setMyEx([...DEF_EX]); saveMyEx([...DEF_EX]) }} style={{ fontSize: '.72rem' }}>恢复默认</button><button type="button" className="btn btn-primary btn-sm" onClick={() => setEditingEx(false)}>完成</button></div>
       </div></div>}
-      {/* 确认删除时长弹窗 */}
+      {/* 确认删除弹窗 */}
       {delConfirm && (
         <div className="modal-overlay" onClick={() => setDelConfirm(null)} style={{ alignItems: 'center' }}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 300, padding: 24, textAlign: 'center', borderRadius: 16, margin: '0 16px' }}>
-            <div style={{ fontSize: '2rem', marginBottom: 8 }}>⏱️</div>
-            <p style={{ fontSize: '.92rem', fontWeight: 600, marginBottom: 4 }}>删除今日训练时长？</p>
-            <p style={{ fontSize: '.78rem', color: 'var(--text-secondary)', marginBottom: 20 }}>删除后可在统计中重新记录</p>
+            <div style={{ fontSize: '2rem', marginBottom: 8 }}>{delConfirm.type === 'duration' ? '⏱️' : '📋'}</div>
+            <p style={{ fontSize: '.92rem', fontWeight: 600, marginBottom: 4 }}>
+              {delConfirm.type === 'duration' ? '删除今日训练时长？' : '删除这个训练计划？'}
+            </p>
+            <p style={{ fontSize: '.78rem', color: 'var(--text-secondary)', marginBottom: 20 }}>
+              {delConfirm.type === 'duration' ? '删除后可在统计中重新记录' : '计划中的动作不会被删除'}
+            </p>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
               <button className="btn btn-secondary" onClick={() => setDelConfirm(null)} style={{ padding: '8px 24px' }}>取消</button>
               <button className="btn btn-danger" onClick={async () => {
-                setDelConfirm(null)
-                try { await fetch(BASE + '/sessions/' + todayStr(), { method: 'DELETE', headers: getHeaders() }); setSavedSec(0) } catch {}
+                if (delConfirm.type === 'duration') {
+                  setDelConfirm(null)
+                  try { await fetch(BASE + '/sessions/' + todayStr(), { method: 'DELETE', headers: getHeaders() }); setSavedSec(0) } catch {}
+                } else {
+                  confirmDelPlan()
+                }
               }} style={{ padding: '8px 24px' }}>删除</button>
             </div>
           </div>
