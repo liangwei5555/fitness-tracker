@@ -429,8 +429,8 @@ export default function TodayWorkout() {
       </div></div>}
       {/* 确认删除时长弹窗 */}
       {delConfirm && (
-        <div className="modal-overlay" onClick={() => setDelConfirm(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 300, padding: 24, textAlign: 'center' }}>
+        <div className="modal-overlay" onClick={() => setDelConfirm(null)} style={{ alignItems: 'center' }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 300, padding: 24, textAlign: 'center', borderRadius: 16, margin: '0 16px' }}>
             <div style={{ fontSize: '2rem', marginBottom: 8 }}>⏱️</div>
             <p style={{ fontSize: '.92rem', fontWeight: 600, marginBottom: 4 }}>删除今日训练时长？</p>
             <p style={{ fontSize: '.78rem', color: 'var(--text-secondary)', marginBottom: 20 }}>删除后可在统计中重新记录</p>
