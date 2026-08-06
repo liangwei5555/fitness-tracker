@@ -126,13 +126,23 @@ export default function Stats() {
     <div style={{ paddingBottom: 20 }}>
       {/* ─── 导航 + 切换 ─── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
-        <button onClick={goPrev} className="btn btn-secondary btn-sm" style={{ padding: '4px 8px', fontSize: '.75rem' }}>◀</button>
-        <button onClick={goToday} className="btn btn-secondary btn-sm" style={{ fontSize: '.7rem', padding: '4px 10px' }}>今天</button>
-        <button onClick={goNext} className="btn btn-secondary btn-sm" style={{ padding: '4px 8px', fontSize: '.75rem' }}>▶</button>
+        <button onClick={goPrev} style={{ border: 'none', background: 'none', fontSize: '1rem', cursor: 'pointer', padding: '4px 6px', color: 'var(--text-secondary)' }}>◀</button>
+        <span style={{
+          fontSize: '.85rem', fontWeight: 600, minWidth: 80, textAlign: 'center',
+          color: cursorDate === today && view === 'today' ? 'var(--primary)' : 'var(--text)',
+        }}>
+          {view === 'today' ? `${cursorDate.slice(5)}` : view === 'week'
+            ? `${weekStart.slice(5)}~${addDays(weekStart, 6).slice(5)}`
+            : `${cursorDate.slice(0, 4)}年${parseInt(cursorDate.slice(5, 7))}月`}
+        </span>
+        <button onClick={goNext} style={{ border: 'none', background: 'none', fontSize: '1rem', cursor: 'pointer', padding: '4px 6px', color: 'var(--text-secondary)' }}>▶</button>
+        {cursorDate !== today && (
+          <button onClick={goToday} className="btn btn-secondary btn-sm" style={{ fontSize: '.68rem', padding: '3px 8px', marginLeft: 4 }}>回今天</button>
+        )}
         <div style={{ flex: 1 }} />
         {(['today', 'week', 'month'] as const).map(v => (
           <button key={v} onClick={() => { setView(v); setCursorDate(v === 'today' ? cursorDate : v === 'week' ? weekMonday(cursorDate) : monthStart(cursorDate)) }} className={`btn btn-sm ${view === v ? 'btn-primary' : 'btn-secondary'}`}>
-            {v === 'today' ? '本日' : v === 'week' ? '本周' : '本月'}
+            {v === 'today' ? '日' : v === 'week' ? '周' : '月'}
           </button>
         ))}
       </div>
