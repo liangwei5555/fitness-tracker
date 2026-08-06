@@ -183,8 +183,8 @@ export default function Stats() {
           <div className="card">
             <h2 style={{ fontSize: '.9rem', marginBottom: 10 }}>📈 每日趋势</h2>
             <ChartErrorBoundary fallback={chartFallback}>
-              <div style={{ width: '100%', height: 200 }}>
-                <ResponsiveContainer width="100%" height="100%">
+              <div style={{ width: '100%', height: 200, overflow: 'hidden' }}>
+                <ResponsiveContainer width="99%" height={200} debounce={1}>
                   <BarChart data={dailyData} margin={{ top: 16, right: 4, left: -20, bottom: 4 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                     <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#64748b' }} interval={view === 'month' ? 2 : 0} />
