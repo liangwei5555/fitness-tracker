@@ -54,7 +54,7 @@ export default function Stats() {
   // ─── 今日统计 ───
   const todayRecords = records.filter(r => r.date === today)
   const todayExercises = todayRecords.length
-  const todaySets = todayRecords.reduce((s, r) => s + (r.completed_sets || r.sets || 0), 0)
+  const todaySets = todayRecords.reduce((s, r) => s + (r.completed_sets || 0), 0)
   const todayTarget = todayRecords.reduce((s, r) => s + (r.target_sets || r.sets || 0), 0)
   const todayDuration = sessions.filter(s => s.date === today).reduce((a, s) => a + s.duration_seconds, 0)
   const periodDuration = sessions.filter(s => s.date >= weekStart).reduce((a, s) => a + s.duration_seconds, 0)
@@ -66,7 +66,7 @@ export default function Stats() {
   const daysSet = new Set<string>()
   periodRecords.forEach(r => {
     if (!r?.exercise_name) return
-    const sets = r.completed_sets || r.sets || 0
+    const sets = r.completed_sets || 0
     byExercise[r.exercise_name] = (byExercise[r.exercise_name] || 0) + sets
     totalSets += sets
     if (sets > 0) daysSet.add(r.date)
@@ -88,12 +88,12 @@ export default function Stats() {
   }
   periodRecords.forEach(r => {
     const entry = dailyData.find(e => e.fullDate === r.date)
-    if (entry) entry.sets += (r.completed_sets || r.sets || 0)
+    if (entry) entry.sets += (r.completed_sets || 0)
   })
 
   // ─── 对比 ───
   const prevStart = view === 'week' ? addDays(weekStart, -7) : (() => { const [y, m] = weekStart.split('-').map(Number); const pm = m - 1 === 0 ? 12 : m - 1; const py = m - 1 === 0 ? y - 1 : y; return `${py}-${String(pm).padStart(2, '0')}-01` })()
-  const prevSets = records.filter(r => r.date >= prevStart && r.date < weekStart).reduce((s, r) => s + (r.completed_sets || r.sets || 0), 0)
+  const prevSets = records.filter(r => r.date >= prevStart && r.date < weekStart).reduce((s, r) => s + (r.completed_sets || 0), 0)
   const periodDays = daysSet.size
 
   const fmtDate = (s: string) => { const d = new Date(s.split('-').map(Number)[0], s.split('-').map(Number)[1] - 1, s.split('-').map(Number)[2]); return `${d.getMonth() + 1}月${d.getDate()}日 周${WD[d.getDay()]}` }
@@ -132,7 +132,7 @@ export default function Stats() {
           {todayRecords.length > 0 && (
             <div style={{ flex: 1, fontSize: '.75rem', opacity: 0.85, lineHeight: 1.4 }}>
               {todayRecords.map(r => (
-                <div key={r.id}>{r.exercise_name} {r.completed_sets || 0}/{r.target_sets || r.sets || 0}组</div>
+                <div key={r.id}>{r.exercise_name} {r.completed_sets || 0}/{r.target_sets || r.sets || 0}组 {r.completed_sets > 0 ? '✅' : ''}</div>
               ))}
             </div>
           )}
