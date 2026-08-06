@@ -2,7 +2,7 @@ import { Routes, Route, NavLink } from 'react-router-dom'
 import TodayWorkout from './pages/TodayWorkout'
 import Photos from './pages/Photos'
 import Stats from './pages/Stats'
-import Goals from './pages/Goals'
+import Notes from './pages/Notes'
 import LoginGate from './components/LoginGate'
 import './App.css'
 
@@ -10,7 +10,7 @@ const TABS = [
   { to: '/', label: '训练', icon: '📅', exact: true },
   { to: '/photos', label: '相册', icon: '🖼️' },
   { to: '/stats', label: '统计', icon: '📊' },
-  { to: '/goals', label: '目标', icon: '🎯' },
+  { to: '/notes', label: '笔记', icon: '📝' },
 ]
 
 export default function App() {
@@ -29,7 +29,7 @@ export default function App() {
             <Route path="/" element={<TodayWorkout />} />
             <Route path="/photos" element={<Photos />} />
             <Route path="/stats" element={<Stats />} />
-            <Route path="/goals" element={<Goals />} />
+            <Route path="/notes" element={<Notes />} />
           </Routes>
         </main>
 
