@@ -9,6 +9,11 @@ function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
+function authOnly(): Record<string, string> {
+  const token = getToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
 async function request<T=unknown>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(BASE + url, {
     headers: { 'Content-Type': 'application/json', ...authHeaders(), ...options?.headers },
@@ -52,7 +57,7 @@ export const photoApi = {
     form.append('date_str', date)
     form.append('view_type', '正面')
     const res = await fetch(BASE + '/photos/upload', {
-      method: 'POST', body: form, headers: { ...authHeaders() },
+      method: 'POST', body: form, headers: { ...authOnly() },
     })
     if (res.status === 401) {
       localStorage.removeItem('fitness_token')
