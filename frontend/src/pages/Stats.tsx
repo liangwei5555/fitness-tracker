@@ -122,8 +122,8 @@ export default function Stats() {
           </div>
           {todayDuration > 0 && (
             <div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 700, lineHeight: 1.1 }}>{fmtDurationShort(todayDuration)}</div>
-              <div style={{ fontSize: '.68rem', opacity: 0.8 }}>训练时长</div>
+              <div style={{ fontSize: '1.8rem', fontWeight: 700, lineHeight: 1.1 }}>{fmtDurationShort(todayDuration)}</div>
+              <div style={{ fontSize: '.72rem', opacity: 0.8 }}>训练时长</div>
             </div>
           )}
           {todayRecords.length > 0 && (
@@ -176,49 +176,76 @@ export default function Stats() {
             ))}
           </div>
 
-          {/* ─── 每日趋势（组数）─── */}
-          <div className="card" style={{ marginBottom: 12 }}>
-            <h2 style={{ fontSize: '.9rem', marginBottom: 10 }}>📈 每日组数</h2>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: view === 'month' ? 1 : 4, height: 130, paddingTop: 18 }}>
-              {dailyData.map((d, i) => {
-                const barH = d.sets > 0 ? Math.max((d.sets / maxDailySets) * 100, 14) : 2
-                const isToday = d.fullDate === today
+          {/* ─── 本日：完成进度 ─── */}
+          {view === 'today' && todayRecords.length > 0 && (
+            <div className="card">
+              <h2 style={{ fontSize: '.9rem', marginBottom: 10 }}>✅ 完成进度</h2>
+              {todayRecords.map(r => {
+                const pct = (r.target_sets || r.sets || 1) > 0 ? Math.round(((r.completed_sets || 0) / (r.target_sets || r.sets || 1)) * 100) : 0
+                const done = (r.completed_sets || 0) >= (r.target_sets || r.sets || 1)
                 return (
-                  <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 0 }}>
-                    <span style={{ fontSize: '.55rem', fontWeight: d.sets > 0 ? 600 : 400, color: d.sets > 0 ? 'var(--primary)' : '#c0c8d4', marginBottom: 3, whiteSpace: 'nowrap' }}>
-                      {d.sets > 0 ? d.sets : ''}
-                    </span>
-                    <div style={{ width: '100%', maxWidth: 24, height: barH, borderRadius: '4px 4px 0 0', background: isToday ? 'var(--primary)' : d.sets > 0 ? '#a5b4fc' : '#e2e8f0', transition: 'height 0.3s ease' }} />
-                    <span style={{ fontSize: '.5rem', color: isToday ? 'var(--primary)' : '#94a3b8', marginTop: 4, fontWeight: isToday ? 700 : 400, whiteSpace: 'nowrap', opacity: showLabel(i) ? 1 : 0 }}>
-                      {d.label}
-                    </span>
+                  <div key={r.id} style={{ marginBottom: 10 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <span style={{ fontSize: '.82rem', fontWeight: 500, color: done ? 'var(--green)' : 'var(--text)' }}>
+                        {done ? '✅ ' : ''}{r.exercise_name}
+                      </span>
+                      <span style={{ fontSize: '.75rem', color: done ? 'var(--green)' : 'var(--text-secondary)', fontWeight: 500 }}>
+                        {r.completed_sets || 0}/{r.target_sets || r.sets || 0}组
+                      </span>
+                    </div>
+                    <div className="progress-bar" style={{ height: 6 }}>
+                      <div className="progress-fill" style={{ width: `${pct}%`, background: done ? 'var(--green)' : pct > 0 ? 'var(--primary)' : '#e2e8f0', borderRadius: 3, transition: 'width 0.3s ease' }} />
+                    </div>
                   </div>
                 )
               })}
             </div>
-          </div>
+          )}
 
-          {/* ─── 每日趋势（时长）─── */}
-          <div className="card">
-            <h2 style={{ fontSize: '.9rem', marginBottom: 10 }}>⏱️ 每日时长（分钟）</h2>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: view === 'month' ? 1 : 4, height: 130, paddingTop: 18 }}>
-              {dailyData.map((d, i) => {
-                const barH = d.duration > 0 ? Math.max((d.duration / maxDailyDur) * 100, 14) : 2
-                const isToday = d.fullDate === today
-                return (
-                  <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 0 }}>
-                    <span style={{ fontSize: '.55rem', fontWeight: d.duration > 0 ? 600 : 400, color: d.duration > 0 ? 'var(--green)' : '#c0c8d4', marginBottom: 3, whiteSpace: 'nowrap' }}>
-                      {d.duration > 0 ? d.duration : ''}
-                    </span>
-                    <div style={{ width: '100%', maxWidth: 24, height: barH, borderRadius: '4px 4px 0 0', background: isToday ? 'var(--green)' : d.duration > 0 ? '#86efac' : '#e2e8f0', transition: 'height 0.3s ease' }} />
-                    <span style={{ fontSize: '.5rem', color: isToday ? 'var(--green)' : '#94a3b8', marginTop: 4, fontWeight: isToday ? 700 : 400, whiteSpace: 'nowrap', opacity: showLabel(i) ? 1 : 0 }}>
-                      {d.label}
-                    </span>
-                  </div>
-                )
-              })}
+          {/* ─── 周/月：每日趋势 ─── */}
+          {view !== 'today' && (<>
+            <div className="card" style={{ marginBottom: 12 }}>
+              <h2 style={{ fontSize: '.9rem', marginBottom: 10 }}>📈 每日组数</h2>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: view === 'month' ? 1 : 4, height: 130, paddingTop: 18 }}>
+                {dailyData.map((d, i) => {
+                  const barH = d.sets > 0 ? Math.max((d.sets / maxDailySets) * 100, 14) : 2
+                  const isToday = d.fullDate === today
+                  return (
+                    <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 0 }}>
+                      <span style={{ fontSize: '.55rem', fontWeight: d.sets > 0 ? 600 : 400, color: d.sets > 0 ? 'var(--primary)' : '#c0c8d4', marginBottom: 3, whiteSpace: 'nowrap' }}>
+                        {d.sets > 0 ? d.sets : ''}
+                      </span>
+                      <div style={{ width: '100%', maxWidth: 24, height: barH, borderRadius: '4px 4px 0 0', background: isToday ? 'var(--primary)' : d.sets > 0 ? '#a5b4fc' : '#e2e8f0', transition: 'height 0.3s ease' }} />
+                      <span style={{ fontSize: '.5rem', color: isToday ? 'var(--primary)' : '#94a3b8', marginTop: 4, fontWeight: isToday ? 700 : 400, whiteSpace: 'nowrap', opacity: showLabel(i) ? 1 : 0 }}>
+                        {d.label}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
-          </div>
+
+            <div className="card">
+              <h2 style={{ fontSize: '.9rem', marginBottom: 10 }}>⏱️ 每日时长（分钟）</h2>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: view === 'month' ? 1 : 4, height: 130, paddingTop: 18 }}>
+                {dailyData.map((d, i) => {
+                  const barH = d.duration > 0 ? Math.max((d.duration / maxDailyDur) * 100, 14) : 2
+                  const isToday = d.fullDate === today
+                  return (
+                    <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 0 }}>
+                      <span style={{ fontSize: '.55rem', fontWeight: d.duration > 0 ? 600 : 400, color: d.duration > 0 ? 'var(--green)' : '#c0c8d4', marginBottom: 3, whiteSpace: 'nowrap' }}>
+                        {d.duration > 0 ? d.duration : ''}
+                      </span>
+                      <div style={{ width: '100%', maxWidth: 24, height: barH, borderRadius: '4px 4px 0 0', background: isToday ? 'var(--green)' : d.duration > 0 ? '#86efac' : '#e2e8f0', transition: 'height 0.3s ease' }} />
+                      <span style={{ fontSize: '.5rem', color: isToday ? 'var(--green)' : '#94a3b8', marginTop: 4, fontWeight: isToday ? 700 : 400, whiteSpace: 'nowrap', opacity: showLabel(i) ? 1 : 0 }}>
+                        {d.label}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </>)}
         </>
       )}
     </div>
