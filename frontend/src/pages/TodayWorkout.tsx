@@ -41,6 +41,7 @@ export default function TodayWorkout() {
   const submitting = useRef(false)
 
   const [weekBase, setWeekBase] = useState(weekMon(today))
+  const [delConfirm, setDelConfirm] = useState<{ type: 'duration' } | null>(null)
 
   // ─── 计时器 ───
   const [timerState, setTimerState] = useState<'idle' | 'running' | 'paused'>('idle')
@@ -296,10 +297,7 @@ export default function TodayWorkout() {
           {savedSec > 0 && timerState === 'idle' && (
             <div style={{ fontSize: '.8rem', color: 'var(--green)', fontWeight: 500, marginBottom: 4 }}>
               ✅ 今日已练 {fmtDuration(savedSec)}
-              <button onClick={async () => {
-                if (!confirm('删除今日训练时长？')) return
-                try { await fetch(BASE + '/sessions/' + todayStr(), { method: 'DELETE', headers: getHeaders() }); setSavedSec(0) } catch {}
-              }} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '.7rem', marginLeft: 4, padding: 0 }}>✕</button>
+              <button onClick={() => setDelConfirm({ type: 'duration' })} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '.7rem', marginLeft: 4, padding: 0 }}>✕</button>
             </div>
           )}
           {timerState === 'idle' && (
@@ -429,6 +427,23 @@ export default function TodayWorkout() {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>{myEx.map(ex => <span key={ex} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px 4px 12px', borderRadius: 16, background: '#f1f5f9', fontSize: '.8rem' }}>{ex}<button type="button" onClick={() => rmEx(ex)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '1rem', padding: '0 2px', lineHeight: 1 }}>×</button></span>)}</div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}><button type="button" className="btn btn-sm btn-secondary" onClick={() => { setMyEx([...DEF_EX]); saveMyEx([...DEF_EX]) }} style={{ fontSize: '.72rem' }}>恢复默认</button><button type="button" className="btn btn-primary btn-sm" onClick={() => setEditingEx(false)}>完成</button></div>
       </div></div>}
+      {/* 确认删除时长弹窗 */}
+      {delConfirm && (
+        <div className="modal-overlay" onClick={() => setDelConfirm(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 300, padding: 24, textAlign: 'center' }}>
+            <div style={{ fontSize: '2rem', marginBottom: 8 }}>⏱️</div>
+            <p style={{ fontSize: '.92rem', fontWeight: 600, marginBottom: 4 }}>删除今日训练时长？</p>
+            <p style={{ fontSize: '.78rem', color: 'var(--text-secondary)', marginBottom: 20 }}>删除后可在统计中重新记录</p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <button className="btn btn-secondary" onClick={() => setDelConfirm(null)} style={{ padding: '8px 24px' }}>取消</button>
+              <button className="btn btn-danger" onClick={async () => {
+                setDelConfirm(null)
+                try { await fetch(BASE + '/sessions/' + todayStr(), { method: 'DELETE', headers: getHeaders() }); setSavedSec(0) } catch {}
+              }} style={{ padding: '8px 24px' }}>删除</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
