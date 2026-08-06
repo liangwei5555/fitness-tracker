@@ -3,7 +3,13 @@ import { workoutApi, type WorkoutRecord } from '../api'
 
 const BASE = '/api'
 function getHeaders() { const t = localStorage.getItem('fitness_token'); return { 'Content-Type': 'application/json', ...(t ? { Authorization: `Bearer ${t}` } : {}) } }
-function fmtDurationShort(sec: number): string { const m = Math.floor(sec / 60); if (m === 0) return '-'; if (m < 60) return `${m}分`; const h = Math.floor(m / 60); return `${h}时${m % 60}分` }
+function fmtDur(sec: number): { num: string; unit: string } {
+  const m = Math.floor(sec / 60)
+  if (m === 0) return { num: '-', unit: '' }
+  if (m < 60) return { num: String(m), unit: '分' }
+  const h = Math.floor(m / 60)
+  return { num: `${h}时${m % 60}`, unit: '' }
+}
 
 function todayStr() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 function addDays(s: string, n: number) { const [y, m, d] = s.split('-').map(Number); const dt = new Date(y, m - 1, d); dt.setDate(dt.getDate() + n); return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}` }
@@ -118,7 +124,9 @@ export default function Stats() {
           </div>
           {todayDuration > 0 && (
             <div>
-              <div style={{ fontSize: '1.8rem', fontWeight: 700, lineHeight: 1.1 }}>{fmtDurationShort(todayDuration)}</div>
+              <div style={{ fontSize: '1.8rem', fontWeight: 700, lineHeight: 1.1 }}>
+                    {(() => { const d = fmtDur(todayDuration); return <>{d.num}<span style={{ fontSize: '.7rem', fontWeight: 400 }}>{d.unit}</span></> })()}
+                  </div>
               <div style={{ fontSize: '.72rem', opacity: 0.8 }}>训练时长</div>
             </div>
           )}
@@ -139,17 +147,22 @@ export default function Stats() {
         <>
           {/* ─── 周期概览 ─── */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 14 }}>
-            {[
-              { v: totalSets, l: '总组数', c: 'var(--primary)' },
-              { v: periodDays, l: '训练天', c: 'var(--green)' },
-              { v: periodDuration > 0 ? fmtDurationShort(periodDuration) : '-', l: '训练时长', c: 'var(--blue)' },
-              { v: prevSets > 0 ? (totalSets >= prevSets ? '+' : '') + (totalSets - prevSets) : '-', l: view === 'today' ? '较昨日' : `较上${view === 'week' ? '周' : '月'}`, c: totalSets >= prevSets ? 'var(--green)' : 'var(--red)' },
-            ].map((item, i) => (
-              <div key={i} style={{ background: '#fff', borderRadius: 10, border: '1px solid var(--border)', padding: '10px 8px', textAlign: 'center' }}>
-                <div style={{ fontSize: '1rem', fontWeight: 700, color: item.c, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.v}</div>
-                <div style={{ fontSize: '.65rem', color: 'var(--text-secondary)' }}>{item.l}</div>
-              </div>
-            ))}
+            {(() => {
+              const dur = fmtDur(periodDuration)
+              const prevLabel = view === 'today' ? '较昨日' : `较上${view === 'week' ? '周' : '月'}`
+              const items: { v: React.ReactNode; l: string; c: string }[] = [
+                { v: totalSets, l: '总组数', c: 'var(--primary)' },
+                { v: periodDays, l: '训练天', c: 'var(--green)' },
+                { v: periodDuration > 0 ? <>{dur.num}<span style={{ fontSize: '.6rem' }}>{dur.unit}</span></> : '-', l: '训练时长', c: 'var(--blue)' },
+                { v: prevSets > 0 ? (totalSets >= prevSets ? '+' : '') + (totalSets - prevSets) : '-', l: prevLabel, c: totalSets >= prevSets ? 'var(--green)' : 'var(--red)' },
+              ]
+              return items.map((item, i) => (
+                <div key={i} style={{ background: '#fff', borderRadius: 10, border: '1px solid var(--border)', padding: '10px 8px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '1rem', fontWeight: 700, color: item.c, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.v}</div>
+                  <div style={{ fontSize: '.65rem', color: 'var(--text-secondary)' }}>{item.l}</div>
+                </div>
+              ))
+            })()}
           </div>
 
           {/* ─── 动作分布（自定义柱状图，数字标在条上）─── */}
