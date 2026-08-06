@@ -27,6 +27,7 @@ export default function Stats() {
   const [error, setError] = useState(false)
   const [view, setView] = useState<'today' | 'week' | 'month'>('today')
   const [sessions, setSessions] = useState<{ date: string; duration_seconds: number }[]>([])
+  const [cursorDate, setCursorDate] = useState(todayStr())
 
   useEffect(() => {
     const from = addDays(todayStr(), -90)
@@ -44,14 +45,27 @@ export default function Stats() {
   if (error) return <div className="empty-state" style={{ padding: 40 }}><p style={{ color: 'var(--text-secondary)' }}>加载失败，请刷新重试</p></div>
 
   const today = todayStr()
-  const weekStart = view === 'today' ? today : view === 'week' ? weekMonday(today) : monthStart(today)
+  const weekStart = view === 'today' ? cursorDate : view === 'week' ? weekMonday(cursorDate) : monthStart(cursorDate)
 
-  // ─── 今日统计 ───
-  const todayRecords = records.filter(r => r.date === today)
-  const todayExercises = todayRecords.length
-  const todaySets = todayRecords.reduce((s, r) => s + (r.completed_sets || 0), 0)
-  const todayTarget = todayRecords.reduce((s, r) => s + (r.target_sets || r.sets || 0), 0)
-  const todayDuration = sessions.filter(s => s.date === today).reduce((a, s) => a + s.duration_seconds, 0)
+  // 导航
+  const goPrev = () => {
+    if (view === 'today') setCursorDate(addDays(cursorDate, -1))
+    else if (view === 'week') setCursorDate(addDays(cursorDate, -7))
+    else { const [y, m] = cursorDate.split('-').map(Number); setCursorDate(m === 1 ? `${y - 1}-12-01` : `${y}-${String(m - 1).padStart(2, '0')}-01`) }
+  }
+  const goNext = () => {
+    if (view === 'today') setCursorDate(addDays(cursorDate, 1))
+    else if (view === 'week') setCursorDate(addDays(cursorDate, 7))
+    else { const [y, m] = cursorDate.split('-').map(Number); setCursorDate(m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`) }
+  }
+  const goToday = () => { setCursorDate(today); setView('today') }
+
+  // ─── 今日统计（用游标日期）───
+  const cursorRecords = records.filter(r => r.date === cursorDate)
+  const cursorExercises = cursorRecords.length
+  const cursorSets = cursorRecords.reduce((s, r) => s + (r.completed_sets || 0), 0)
+  const cursorTarget = cursorRecords.reduce((s, r) => s + (r.target_sets || r.sets || 0), 0)
+  const cursorDuration = sessions.filter(s => s.date === cursorDate).reduce((a, s) => a + s.duration_seconds, 0)
   const periodDuration = sessions.filter(s => s.date >= weekStart).reduce((a, s) => a + s.duration_seconds, 0)
 
   // ─── 周期统计 ───
@@ -87,9 +101,18 @@ export default function Stats() {
     if (entry) entry.sets += (r.completed_sets || 0)
   })
 
-  // ─── 对比 ───
-  const prevStart = view === 'today' ? addDays(today, -1) : view === 'week' ? addDays(weekStart, -7) : (() => { const [y, m] = weekStart.split('-').map(Number); const pm = m - 1 === 0 ? 12 : m - 1; const py = m - 1 === 0 ? y - 1 : y; return `${py}-${String(pm).padStart(2, '0')}-01` })()
-  const prevSets = records.filter(r => r.date >= prevStart && r.date < weekStart).reduce((s, r) => s + (r.completed_sets || 0), 0)
+  // ─── 对比：上一训练日 ───
+  const allDates = [...new Set(records.map(r => r.date))].sort()
+  const prevTrainDay = view === 'today'
+    ? allDates.filter(d => d < cursorDate).pop() || null
+    : null
+  const prevTrainSets = prevTrainDay
+    ? records.filter(r => r.date === prevTrainDay).reduce((s, r) => s + (r.completed_sets || 0), 0)
+    : 0
+  const prevStart = !prevTrainDay ? (view === 'today' ? addDays(cursorDate, -1) : view === 'week' ? addDays(weekStart, -7) : (() => { const [y, m] = weekStart.split('-').map(Number); const pm = m - 1 === 0 ? 12 : m - 1; const py = m - 1 === 0 ? y - 1 : y; return `${py}-${String(pm).padStart(2, '0')}-01` })()) : ''
+  const prevSets = view === 'today' && prevTrainDay
+    ? prevTrainSets
+    : records.filter(r => r.date >= prevStart && r.date < weekStart).reduce((s, r) => s + (r.completed_sets || 0), 0)
   const periodDays = daysSet.size
 
   const fmtDate = (s: string) => { const d = new Date(s.split('-').map(Number)[0], s.split('-').map(Number)[1] - 1, s.split('-').map(Number)[2]); return `${d.getMonth() + 1}月${d.getDate()}日 周${WD[d.getDay()]}` }
@@ -101,10 +124,14 @@ export default function Stats() {
 
   return (
     <div style={{ paddingBottom: 20 }}>
-      {/* ─── 切换 ─── */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+      {/* ─── 导航 + 切换 ─── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+        <button onClick={goPrev} className="btn btn-secondary btn-sm" style={{ padding: '4px 8px', fontSize: '.75rem' }}>◀</button>
+        <button onClick={goToday} className="btn btn-secondary btn-sm" style={{ fontSize: '.7rem', padding: '4px 10px' }}>今天</button>
+        <button onClick={goNext} className="btn btn-secondary btn-sm" style={{ padding: '4px 8px', fontSize: '.75rem' }}>▶</button>
+        <div style={{ flex: 1 }} />
         {(['today', 'week', 'month'] as const).map(v => (
-          <button key={v} onClick={() => setView(v)} className={`btn btn-sm ${view === v ? 'btn-primary' : 'btn-secondary'}`}>
+          <button key={v} onClick={() => { setView(v); setCursorDate(v === 'today' ? cursorDate : v === 'week' ? weekMonday(cursorDate) : monthStart(cursorDate)) }} className={`btn btn-sm ${view === v ? 'btn-primary' : 'btn-secondary'}`}>
             {v === 'today' ? '本日' : v === 'week' ? '本周' : '本月'}
           </button>
         ))}
@@ -113,33 +140,33 @@ export default function Stats() {
       {/* ─── 今日训练（仅本日视图）─── */}
       {view === 'today' && (
         <div style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', borderRadius: 12, padding: '16px 18px', marginBottom: 12, color: '#fff' }}>
-          <div style={{ fontSize: '.75rem', opacity: 0.8, marginBottom: 4 }}>📅 {fmtDate(today)}</div>
+          <div style={{ fontSize: '.75rem', opacity: 0.8, marginBottom: 4 }}>📅 {fmtDate(cursorDate)}</div>
           <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
             <div>
-              <div style={{ fontSize: '1.8rem', fontWeight: 700, lineHeight: 1.1 }}>{todayExercises}</div>
+              <div style={{ fontSize: '1.8rem', fontWeight: 700, lineHeight: 1.1 }}>{cursorExercises}</div>
               <div style={{ fontSize: '.72rem', opacity: 0.8 }}>训练动作</div>
             </div>
             <div>
-              <div style={{ fontSize: '1.8rem', fontWeight: 700, lineHeight: 1.1 }}>{todaySets}<span style={{ fontSize: '.85rem', fontWeight: 400 }}>/{todayTarget}</span></div>
+              <div style={{ fontSize: '1.8rem', fontWeight: 700, lineHeight: 1.1 }}>{cursorSets}<span style={{ fontSize: '.85rem', fontWeight: 400 }}>/{cursorTarget}</span></div>
               <div style={{ fontSize: '.72rem', opacity: 0.8 }}>已完成/目标 组</div>
             </div>
-            {todayDuration > 0 && (
+            {cursorDuration > 0 && (
               <div>
                 <div style={{ fontSize: '1.8rem', fontWeight: 700, lineHeight: 1.1 }}>
-                  {(() => { const d = fmtDur(todayDuration); return <>{d.num}<span style={{ fontSize: '.7rem', fontWeight: 400 }}>{d.unit}</span></> })()}
+                  {(() => { const d = fmtDur(cursorDuration); return <>{d.num}<span style={{ fontSize: '.7rem', fontWeight: 400 }}>{d.unit}</span></> })()}
                 </div>
                 <div style={{ fontSize: '.72rem', opacity: 0.8 }}>训练时长</div>
               </div>
             )}
-            {todayRecords.length > 0 && (
+            {cursorRecords.length > 0 && (
               <div style={{ flex: 1, fontSize: '.75rem', opacity: 0.85, lineHeight: 1.4 }}>
-                {todayRecords.map(r => (
+                {cursorRecords.map(r => (
                   <div key={r.id} style={{ whiteSpace: 'nowrap' }}>{r.exercise_name} {r.completed_sets || 0}/{r.target_sets || r.sets || 0}组{r.completed_sets > 0 ? ' ✅' : ''}</div>
                 ))}
               </div>
             )}
           </div>
-          {todayRecords.length === 0 && <div style={{ fontSize: '.78rem', opacity: 0.7, marginTop: 4 }}>今天还没开始训练</div>}
+          {cursorRecords.length === 0 && <div style={{ fontSize: '.78rem', opacity: 0.7, marginTop: 4 }}>这天还没开始训练</div>}
         </div>
       )}
 
@@ -151,7 +178,9 @@ export default function Stats() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 14 }}>
             {(() => {
               const dur = fmtDur(periodDuration)
-              const prevLabel = view === 'today' ? '较昨日' : `较上${view === 'week' ? '周' : '月'}`
+              const prevLabel = view === 'today'
+                ? (prevTrainDay ? `较${prevTrainDay.slice(5)}` : '无历史')
+                : `较上${view === 'week' ? '周' : '月'}`
               const items: { v: React.ReactNode; l: string; c: string }[] = [
                 { v: totalSets, l: '总组数', c: 'var(--primary)' },
                 { v: periodDays, l: '训练天', c: 'var(--green)' },
