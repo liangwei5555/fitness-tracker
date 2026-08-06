@@ -83,6 +83,7 @@ export default function Stats() {
   })
 
   const exerciseData = Object.entries(byExercise)
+    .filter(([, sets]) => sets > 0)
     .map(([name, sets]) => ({ name, sets }))
     .sort((a, b) => b.sets - a.sets)
   const maxExerciseSets = exerciseData.length > 0 ? exerciseData[0].sets : 1
@@ -129,7 +130,7 @@ export default function Stats() {
     <div style={{ paddingBottom: 20 }}>
       {/* ─── 导航栏 ─── */}
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-        <button onClick={goPrev} style={{ border: 'none', background: 'none', fontSize: '1.1rem', cursor: 'pointer', padding: '6px 8px', color: 'var(--text-secondary)' }}>◀</button>
+        <button onClick={goPrev} style={{ border: 'none', background: 'none', fontSize: '1rem', cursor: 'pointer', padding: '4px 2px', color: 'var(--text-secondary)' }}>◀</button>
         <span style={{
           fontSize: '.9rem', fontWeight: 600, textAlign: 'center', flex: 1,
           color: cursorDate === today && view === 'today' ? 'var(--primary)' : 'var(--text)',
@@ -141,7 +142,7 @@ export default function Stats() {
             <button onClick={goToday} className="btn btn-secondary btn-sm" style={{ fontSize: '.65rem', padding: '2px 8px', marginLeft: 6, verticalAlign: 'middle' }}>回今天</button>
           )}
         </span>
-        <button onClick={goNext} style={{ border: 'none', background: 'none', fontSize: '1.1rem', cursor: 'pointer', padding: '6px 8px', color: 'var(--text-secondary)' }}>▶</button>
+        <button onClick={goNext} style={{ border: 'none', background: 'none', fontSize: '1rem', cursor: 'pointer', padding: '4px 2px', color: 'var(--text-secondary)' }}>▶</button>
       </div>
 
       {/* 日期选择 + 视图切换 */}
