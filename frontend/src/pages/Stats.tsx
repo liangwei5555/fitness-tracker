@@ -3,7 +3,7 @@ import { workoutApi, type WorkoutRecord } from '../api'
 
 const BASE = '/api'
 function getHeaders() { const t = localStorage.getItem('fitness_token'); return { 'Content-Type': 'application/json', ...(t ? { Authorization: `Bearer ${t}` } : {}) } }
-function fmtDuration(sec: number): string { const m = Math.floor(sec / 60); if (m < 60) return `${m}分钟`; const h = Math.floor(m / 60); return `${h}小时${m % 60}分钟` }
+function fmtDurationShort(sec: number): string { const m = Math.floor(sec / 60); if (m === 0) return '-'; if (m < 60) return `${m}分`; const h = Math.floor(m / 60); return `${h}时${m % 60}分` }
 
 function todayStr() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 function addDays(s: string, n: number) { const [y, m, d] = s.split('-').map(Number); const dt = new Date(y, m - 1, d); dt.setDate(dt.getDate() + n); return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}` }
@@ -19,7 +19,7 @@ export default function Stats() {
   const [records, setRecords] = useState<WorkoutRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
-  const [view, setView] = useState<'week' | 'month'>('week')
+  const [view, setView] = useState<'today' | 'week' | 'month'>('today')
   const [sessions, setSessions] = useState<{ date: string; duration_seconds: number }[]>([])
 
   useEffect(() => {
@@ -38,7 +38,7 @@ export default function Stats() {
   if (error) return <div className="empty-state" style={{ padding: 40 }}><p style={{ color: 'var(--text-secondary)' }}>加载失败，请刷新重试</p></div>
 
   const today = todayStr()
-  const weekStart = view === 'week' ? weekMonday(today) : monthStart(today)
+  const weekStart = view === 'today' ? today : view === 'week' ? weekMonday(today) : monthStart(today)
 
   // ─── 今日统计 ───
   const todayRecords = records.filter(r => r.date === today)
@@ -67,7 +67,7 @@ export default function Stats() {
   const maxExerciseSets = exerciseData.length > 0 ? exerciseData[0].sets : 1
 
   // ─── 每日趋势 ───
-  const periodEnd = view === 'week' ? addDays(weekStart, 6) : monthEnd(weekStart)
+  const periodEnd = view === 'today' ? today : view === 'week' ? addDays(weekStart, 6) : monthEnd(weekStart)
   const dailyData: { label: string; sets: number; fullDate: string }[] = []
   let cursor = weekStart
   while (cursor <= periodEnd) {
@@ -81,7 +81,7 @@ export default function Stats() {
   })
 
   // ─── 对比 ───
-  const prevStart = view === 'week' ? addDays(weekStart, -7) : (() => { const [y, m] = weekStart.split('-').map(Number); const pm = m - 1 === 0 ? 12 : m - 1; const py = m - 1 === 0 ? y - 1 : y; return `${py}-${String(pm).padStart(2, '0')}-01` })()
+  const prevStart = view === 'today' ? addDays(today, -1) : view === 'week' ? addDays(weekStart, -7) : (() => { const [y, m] = weekStart.split('-').map(Number); const pm = m - 1 === 0 ? 12 : m - 1; const py = m - 1 === 0 ? y - 1 : y; return `${py}-${String(pm).padStart(2, '0')}-01` })()
   const prevSets = records.filter(r => r.date >= prevStart && r.date < weekStart).reduce((s, r) => s + (r.completed_sets || 0), 0)
   const periodDays = daysSet.size
 
@@ -93,9 +93,9 @@ export default function Stats() {
     <div style={{ paddingBottom: 20 }}>
       {/* ─── 切换 ─── */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        {(['week', 'month'] as const).map(v => (
+        {(['today', 'week', 'month'] as const).map(v => (
           <button key={v} onClick={() => setView(v)} className={`btn btn-sm ${view === v ? 'btn-primary' : 'btn-secondary'}`}>
-            {v === 'week' ? '本周' : '本月'}
+            {v === 'today' ? '本日' : v === 'week' ? '本周' : '本月'}
           </button>
         ))}
       </div>
@@ -114,8 +114,8 @@ export default function Stats() {
           </div>
           {todayDuration > 0 && (
             <div>
-              <div style={{ fontSize: '1.8rem', fontWeight: 700, lineHeight: 1.1 }}>{fmtDuration(todayDuration)}</div>
-              <div style={{ fontSize: '.72rem', opacity: 0.8 }}>训练时长</div>
+              <div style={{ fontSize: '1.3rem', fontWeight: 700, lineHeight: 1.1 }}>{fmtDurationShort(todayDuration)}</div>
+              <div style={{ fontSize: '.68rem', opacity: 0.8 }}>训练时长</div>
             </div>
           )}
           {todayRecords.length > 0 && (
@@ -130,7 +130,7 @@ export default function Stats() {
       </div>
 
       {exerciseData.length === 0 ? (
-        <div className="empty-state" style={{ padding: 40 }}><div style={{ fontSize: '2.2rem' }}>📊</div><p style={{ color: 'var(--text-secondary)' }}>{view === 'week' ? '本周' : '本月'}暂无训练记录</p></div>
+        <div className="empty-state" style={{ padding: 40 }}><div style={{ fontSize: '2.2rem' }}>📊</div><p style={{ color: 'var(--text-secondary)' }}>{view === 'today' ? '今天' : view === 'week' ? '本周' : '本月'}暂无训练记录</p></div>
       ) : (
         <>
           {/* ─── 周期概览 ─── */}
@@ -138,12 +138,12 @@ export default function Stats() {
             {[
               { v: totalSets, l: '总组数', c: 'var(--primary)' },
               { v: periodDays, l: '训练天', c: 'var(--green)' },
-              { v: periodDuration > 0 ? fmtDuration(periodDuration) : '-', l: '训练时长', c: 'var(--blue)' },
-              { v: prevSets > 0 ? (totalSets >= prevSets ? '+' : '') + (totalSets - prevSets) : '-', l: `较上${view === 'week' ? '周' : '月'}`, c: totalSets >= prevSets ? 'var(--green)' : 'var(--red)' },
+              { v: periodDuration > 0 ? fmtDurationShort(periodDuration) : '-', l: '训练时长', c: 'var(--blue)' },
+              { v: prevSets > 0 ? (totalSets >= prevSets ? '+' : '') + (totalSets - prevSets) : '-', l: view === 'today' ? '较昨日' : `较上${view === 'week' ? '周' : '月'}`, c: totalSets >= prevSets ? 'var(--green)' : 'var(--red)' },
             ].map((item, i) => (
               <div key={i} style={{ background: '#fff', borderRadius: 10, border: '1px solid var(--border)', padding: '10px 8px', textAlign: 'center' }}>
-                <div style={{ fontSize: '1.2rem', fontWeight: 700, color: item.c }}>{item.v}</div>
-                <div style={{ fontSize: '.68rem', color: 'var(--text-secondary)' }}>{item.l}</div>
+                <div style={{ fontSize: '1rem', fontWeight: 700, color: item.c, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.v}</div>
+                <div style={{ fontSize: '.65rem', color: 'var(--text-secondary)' }}>{item.l}</div>
               </div>
             ))}
           </div>
