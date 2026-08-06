@@ -49,21 +49,25 @@ export default function TodayWorkout() {
   const timerRef = useRef<number | null>(null)
   const startRef = useRef(0)
   const accumRef = useRef(0)
+  const tStateRef = useRef<'idle' | 'running' | 'paused'>('idle')
 
   const clearTimerInterval = () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null } }
 
-  const persistTimer = (running: boolean, paused: boolean, elapsed: number) => {
-    localStorage.setItem('timer_state', JSON.stringify({ running, paused, elapsed }))
+  const tickAndPersist = () => {
+    const now = Math.floor((Date.now() - startRef.current) / 1000)
+    const total = accumRef.current + now
+    setElapsedSec(total)
+    // 每秒保存到 localStorage，防止切换页面丢失
+    localStorage.setItem('timer_state', JSON.stringify({ running: true, paused: false, elapsed: total }))
   }
 
   const startTimer = () => {
     clearTimerInterval()
     startRef.current = Date.now()
     setTimerState('running')
-    persistTimer(true, false, accumRef.current)
-    timerRef.current = window.setInterval(() => {
-      setElapsedSec(accumRef.current + Math.floor((Date.now() - startRef.current) / 1000))
-    }, 200)
+    tStateRef.current = 'running'
+    localStorage.setItem('timer_state', JSON.stringify({ running: true, paused: false, elapsed: accumRef.current }))
+    timerRef.current = window.setInterval(tickAndPersist, 1000)
   }
 
   const pauseTimer = () => {
@@ -71,24 +75,25 @@ export default function TodayWorkout() {
     accumRef.current += Math.floor((Date.now() - startRef.current) / 1000)
     setElapsedSec(accumRef.current)
     setTimerState('paused')
-    persistTimer(true, true, accumRef.current)
+    tStateRef.current = 'paused'
+    localStorage.setItem('timer_state', JSON.stringify({ running: true, paused: true, elapsed: accumRef.current }))
   }
 
   const resumeTimer = () => {
     clearTimerInterval()
     startRef.current = Date.now()
     setTimerState('running')
-    persistTimer(true, false, accumRef.current)
-    timerRef.current = window.setInterval(() => {
-      setElapsedSec(accumRef.current + Math.floor((Date.now() - startRef.current) / 1000))
-    }, 200)
+    tStateRef.current = 'running'
+    localStorage.setItem('timer_state', JSON.stringify({ running: true, paused: false, elapsed: accumRef.current }))
+    timerRef.current = window.setInterval(tickAndPersist, 1000)
   }
 
   const stopTimer = useCallback(async () => {
     clearTimerInterval()
-    const final = accumRef.current + (timerState === 'running' ? Math.floor((Date.now() - startRef.current) / 1000) : 0)
+    const final = accumRef.current + (tStateRef.current === 'running' ? Math.floor((Date.now() - startRef.current) / 1000) : 0)
     setElapsedSec(final)
     setTimerState('idle')
+    tStateRef.current = 'idle'
     accumRef.current = 0
     localStorage.removeItem('timer_state')
     // 保存到后端
@@ -104,7 +109,7 @@ export default function TodayWorkout() {
     } catch { /* ignore */ }
   }, [timerState])
 
-  // 恢复计时器（页面刷新后）
+  // 恢复计时器（页面刷新/切换tab后回来）
   useEffect(() => {
     const saved = localStorage.getItem('timer_state')
     if (saved) {
@@ -116,11 +121,11 @@ export default function TodayWorkout() {
           if (!st.paused) {
             startRef.current = Date.now()
             setTimerState('running')
-            timerRef.current = window.setInterval(() => {
-              setElapsedSec(accumRef.current + Math.floor((Date.now() - startRef.current) / 1000))
-            }, 200)
+            tStateRef.current = 'running'
+            timerRef.current = window.setInterval(tickAndPersist, 1000)
           } else {
             setTimerState('paused')
+            tStateRef.current = 'paused'
           }
         }
       } catch { /* ignore */ }
@@ -128,7 +133,14 @@ export default function TodayWorkout() {
     // 加载今日已保存时长
     fetch(BASE + '/sessions/' + todayStr(), { headers: getHeaders() })
       .then(r => r.json()).then(d => setSavedSec(d.duration_seconds || 0)).catch(() => {})
-    return () => clearTimerInterval()
+    return () => {
+      // 组件卸载时保存最新计时状态，防止切换页面丢失
+      if (tStateRef.current === 'running') {
+        const currentElapsed = accumRef.current + Math.floor((Date.now() - startRef.current) / 1000)
+        localStorage.setItem('timer_state', JSON.stringify({ running: true, paused: false, elapsed: currentElapsed }))
+      }
+      clearTimerInterval()
+    }
   }, [])
 
   // ─── 滑动 ───
@@ -161,10 +173,13 @@ export default function TodayWorkout() {
 
   // ─── 数据 ───
   const load = () => {
+    // 只在首次加载时显示 loading，后续切换日期不清空已有数据
     setLoading(true)
     workoutApi.list({ date_from: date, date_to: date, page_size: '200' })
-      .then(r => setRecords(r.data || [])).catch(() => {}).finally(() => setLoading(false))
-    photoApi.list({ date_from: date, date_to: date })
+      .then(r => setRecords(r.data || []))
+      .catch(() => { /* 失败时保留已有数据，不显示空状态 */ })
+      .finally(() => setLoading(false))
+    photoApi.list({ date_from: date, date_to: date, page_size: '100' })
       .then(r => setPhotos(r.data || [])).catch(() => {})
   }
   const loadHist = () => {

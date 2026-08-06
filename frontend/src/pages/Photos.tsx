@@ -17,7 +17,7 @@ export default function Photos() {
   const fileRef = useRef<HTMLInputElement>(null)
 
   const load = () => {
-    photoApi.list({ page_size: '200' })
+    photoApi.list({ page_size: '100' })
       .then(r => setPhotos(r.data || []))
       .catch(() => {})
       .finally(() => setLoading(false))
